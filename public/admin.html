@@ -31,6 +31,20 @@
         <button class="quiet" id="admin-logout" type="button">Sign out</button>
       </div>
       <div class="admin-summary"><div><b id="user-total">0</b><span>members</span></div><div><b id="memory-total">0</b><span>memories</span></div><div><b>Private</b><span>admin session</span></div></div>
+      <section class="admin-tools-card" aria-label="Admin shared gallery tools">
+        <form id="admin-upload" class="admin-upload">
+          <div class="admin-tool-copy"><span class="eyebrow">Admin collection</span><h2>Add a memory</h2><p>Upload photos or videos directly to the shared gallery.</p></div>
+          <label class="admin-file-pick">＋ <span id="admin-file-name">Choose photos or videos</span><input id="admin-files" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/quicktime,video/webm" multiple required></label>
+          <label class="admin-caption">Caption <input name="caption" maxlength="180" placeholder="A little detail to remember…"></label>
+          <div class="admin-tool-actions"><span id="admin-upload-status" aria-live="polite">Up to 100 MB per file</span><button class="primary" type="submit">Upload <span>↗</span></button></div>
+        </form>
+        <div class="admin-story-share">
+          <div class="admin-tool-copy"><span class="eyebrow">Gift page</span><h2>Share the love story</h2><p>The link opens your animated gift page with the shared gallery memories.</p></div>
+          <div class="admin-tool-actions"><button class="quiet" id="create-story-link" type="button">Create story link</button><button class="quiet hidden" id="revoke-story-link" type="button">Revoke link</button></div>
+          <input id="story-link-url" class="story-link-url hidden" type="url" readonly aria-label="Animated story share link">
+          <small class="admin-share-note">Anyone with this link can see memories from active albums set to “All signed-in members”.</small>
+        </div>
+      </section>
       <div class="admin-tabs" role="tablist"><button class="active" data-view="users-view" type="button">Members & access</button><button data-view="memories-view" type="button">All memories</button></div>
       <div class="admin-notice" id="admin-notice" role="status"></div>
       <section id="users-view" class="admin-view"></section>

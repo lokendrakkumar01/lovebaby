@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const loginCard = $('#login-card');
 const adminApp = $('#admin-app');
 const loginForm = $('#admin-login');
+const adminUploadForm = $('#admin-upload');
 let members = [];
 let memories = [];
 
@@ -258,4 +259,72 @@ document.querySelectorAll('.admin-tabs button').forEach((button) => button.addEv
   document.querySelectorAll('.admin-view').forEach((view) => view.classList.toggle('hidden', view.id !== button.dataset.view));
 }));
 $('#memory-search').addEventListener('input', renderMemories);
+
+$('#admin-files').addEventListener('change', (event) => {
+  const files = Array.from(event.target.files || []);
+  $('#admin-file-name').textContent = files.length ? `${files.length} file${files.length === 1 ? '' : 's'} selected` : 'Choose photos or videos';
+});
+
+adminUploadForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const files = Array.from($('#admin-files').files || []);
+  if (!files.length) return;
+  const button = adminUploadForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  const caption = String(new FormData(adminUploadForm).get('caption') || '');
+  let uploaded = 0;
+  try {
+    for (const file of files) {
+      $('#admin-upload-status').textContent = `Uploading ${uploaded + 1} of ${files.length}…`;
+      const form = new FormData();
+      form.append('file', file);
+      form.append('caption', caption);
+      await api('/api/admin/media', { method: 'POST', body: form });
+      uploaded += 1;
+    }
+    adminUploadForm.reset();
+    $('#admin-file-name').textContent = 'Choose photos or videos';
+    $('#admin-upload-status').textContent = `${uploaded} memory${uploaded === 1 ? '' : 'ies'} added to the shared gallery.`;
+    await loadMemories();
+  } catch (error) {
+    $('#admin-upload-status').textContent = uploaded ? `${uploaded} uploaded; the next file failed: ${error.message}` : error.message;
+    await loadMemories().catch(() => {});
+  } finally { button.disabled = false; }
+});
+
+$('#create-story-link').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  notice($('#admin-notice'), 'Preparing the animated story link…');
+  try {
+    const { url } = await api('/api/admin/story-link', { method: 'POST' });
+    const field = $('#story-link-url');
+    field.value = url;
+    field.classList.remove('hidden');
+    $('#revoke-story-link').classList.remove('hidden');
+    try {
+      await navigator.clipboard.writeText(url);
+      notice($('#admin-notice'), 'Story link created and copied. Anyone with it can open the shared memories page.');
+    } catch {
+      field.focus(); field.select();
+      notice($('#admin-notice'), 'Story link created. Copy it from the field below.');
+    }
+  } catch (error) { notice($('#admin-notice'), error.message); }
+  finally { button.disabled = false; }
+});
+
+$('#revoke-story-link').addEventListener('click', async (event) => {
+  if (!window.confirm('Revoke this public story link? Anyone using it will lose access.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/admin/story-link', { method: 'DELETE' });
+    $('#story-link-url').value = '';
+    $('#story-link-url').classList.add('hidden');
+    button.classList.add('hidden');
+    notice($('#admin-notice'), 'The story link has been revoked.');
+  } catch (error) { notice($('#admin-notice'), error.message); }
+  finally { button.disabled = false; }
+});
+
 api('/api/admin/session').then(openStudio).catch(() => {});
