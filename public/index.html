@@ -1,20 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f7f1eb">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f7f1eb">
   <meta name="description" content="A private place for your favourite photos, videos, and little love notes.">
-  <title>Little Moments — private memories</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
+  <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Little Moments — private memories</title><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
   <div class="progress" id="progress"></div><div class="grain" aria-hidden="true"></div>
-  <header class="topbar"><a class="brand" href="/">little moments <span>♡</span></a><span class="top-note">a shared memory space</span></header>
+  <header class="topbar"><a class="brand" href="/">little moments <span>♡</span></a><span class="top-note">a shared memory space</span><button class="install-app hidden" id="install-app" type="button">＋ Install app</button></header>
   <main class="layout">
       <section class="intro" id="intro"><div class="eyebrow">for the things worth keeping</div><h1>Your story,<br><em>our little world.</em></h1><p>Sign in to see shared photos, videos and the messages people want to remember.</p><div class="intro-art" aria-hidden="true"><div class="art-placeholder"></div><div class="art-note">the little things<br>stay with us <b>♡</b></div><span class="art-index">MEMORY NO. 01</span></div></section>
     <section class="panel auth-panel" id="auth-panel"><div class="panel-kicker">your shared memory space</div><h2 id="auth-title">Welcome back</h2><p class="panel-copy" id="auth-copy">Sign in to see all member memories.</p>
       <form id="auth-form" class="form"><label>Email<input name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" placeholder="At least 10 characters" required></label><div id="name-field" class="hidden"><label>Your name<input name="name" autocomplete="name" maxlength="60" placeholder="How should we call you?"></label></div><label id="shared-consent" class="shared-consent hidden"><input type="checkbox" name="sharedConsent"><span>I understand that signed-in members can see the photos, videos and notes I add.</span></label><button class="button primary" type="submit" id="auth-submit">Sign in <span>↗</span></button><div class="notice" id="auth-error" role="alert"></div></form>
       <p class="switch-auth" id="switch-auth">New here? <button type="button" class="text-button" id="toggle-auth">Create an account</button></p><div class="privacy-note"><span>◈</span><span>Memories can be seen by signed-in members. The admin can restrict which members see each album.</span></div>
+      <p class="persistent-note">Stay signed in on this device; your session renews as you use the gallery.</p>
     </section>
     <section class="panel dashboard hidden" id="dashboard"><div class="dashboard-head"><div><div class="panel-kicker">a shared memory space</div><h2>Welcome, <span id="user-name">friend</span>.</h2><p class="panel-copy">See all member memories. Add photos, videos and notes for everyone to enjoy.</p></div><button class="button quiet" id="sign-out" type="button">Sign out</button></div>
+      <nav class="mobile-dock" aria-label="Quick navigation"><button type="button" data-scroll-to="dashboard">⌂<span>Home</span></button><button type="button" data-scroll-to="memories-grid">♡<span>Memories</span></button><button type="button" data-scroll-to="upload-form">＋<span>Add</span></button></nav>
       <div class="share-box"><div class="share-copy"><span class="share-icon">↗</span><div><b>Share your album</b><small id="share-status">Only you can see these memories.</small></div></div><div class="share-actions"><button class="button outline" id="share-button" type="button">Create view link</button><button class="button quiet hidden" id="revoke-share" type="button">Revoke</button></div><input id="share-url" class="share-url hidden" type="url" readonly aria-label="Your private album link"></div>
       <div class="share-box contributor-box"><div class="share-copy"><span class="share-icon">＋</span><div><b>Invite someone to add memories</b><small id="contributor-status">Create a private upload link for your girlfriend.</small></div></div><div class="share-actions"><button class="button outline" id="contributor-button" type="button">Create upload link</button><button class="button quiet hidden" id="revoke-contributor" type="button">Revoke</button></div><input id="contributor-url" class="share-url hidden" type="url" readonly aria-label="Photo and video upload link"></div>
       <div class="composer-grid"><form class="composer" id="message-form"><div class="composer-title"><span class="round-icon">✎</span><div><b>Leave a little note</b><small>A message for your memory box</small></div></div><label class="sr-only" for="message-text">Write your message</label><textarea id="message-text" name="text" maxlength="3000" placeholder="Write something you want to remember…" required></textarea><div class="composer-foot"><span id="char-count">0 / 3000</span><button class="button text" type="submit">Save note <b>↗</b></button></div></form>
@@ -25,5 +28,6 @@
   </main>
   <footer class="footer"><span>made for moments that matter</span><span>little moments <b>♡</b></span><a href="/Admin/login">Admin</a></footer>
   <div class="lightbox hidden" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo and video viewer"><button class="lb-close" id="lb-close" aria-label="Close">×</button><button class="lb-arrow" id="lb-prev" aria-label="Previous">‹</button><div class="lb-content" id="lb-content"></div><button class="lb-arrow" id="lb-next" aria-label="Next">›</button><div class="lb-count" id="lb-count"></div></div>
+  <div class="memory-backdrop" id="memory-backdrop" aria-hidden="true"></div>
 </body>
 </html>

@@ -53,6 +53,7 @@ function showDashboard(user) {
   authPanel.classList.add('hidden');
   sharedView.classList.add('hidden');
   dashboard.classList.remove('hidden');
+  document.body.dataset.signedIn = 'true';
   $('#user-name').textContent = user.name;
   $('#share-button').textContent = user.hasShareLink ? 'Copy album link' : 'Create share link';
   $('#revoke-share').classList.toggle('hidden', !user.hasShareLink);
@@ -65,6 +66,7 @@ function showDashboard(user) {
     ? 'Anyone with this link can view photos and videos, and add more.'
     : 'Create a private upload link for your girlfriend.';
   loadItems();
+  loadMemoryBackground();
 }
 
 function addMemoryDate(container, date) {
@@ -83,6 +85,68 @@ function makeButton(label, className, action) {
   button.textContent = label;
   button.addEventListener('click', action);
   return button;
+}
+
+function addMemoryTools(container, item) {
+  const actions = document.createElement('div');
+  actions.className = 'memory-actions memory-tools-row';
+  if (item.mediaUrl) {
+    const download = document.createElement('a');
+    download.className = 'memory-tool-button';
+    download.href = `${item.mediaUrl}${item.mediaUrl.includes('?') ? '&' : '?'}download=1`;
+    download.download = `memory-${item.id}`;
+    download.textContent = '↓ Download';
+    actions.append(download);
+  } else if (item.kind === 'note') {
+    actions.append(makeButton('↓ Download note', 'memory-tool-button', () => {
+      const url = URL.createObjectURL(new Blob([item.text], { type: 'text/plain;charset=utf-8' }));
+      const download = document.createElement('a');
+      download.href = url;
+      download.download = `memory-${item.id}.txt`;
+      download.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }));
+  }
+  if (document.body.dataset.signedIn === 'true') {
+    actions.append(makeButton('↗ Share', 'memory-tool-button memory-share-button', () => shareMemory(item)));
+  }
+  return actions;
+}
+
+async function shareMemory(item) {
+  const button = document.activeElement;
+  if (button instanceof HTMLButtonElement) { button.disabled = true; button.textContent = 'Making link…'; }
+  try {
+    const { url } = await api(`/api/items/${encodeURIComponent(item.id)}/share`, { method: 'POST' });
+    if (navigator.share) {
+      try { await navigator.share({ title: item.caption || 'A memory', text: 'A memory to keep', url }); }
+      catch (error) { if (error.name !== 'AbortError') throw error; }
+    } else {
+      await navigator.clipboard.writeText(url);
+      setNotice($('#dashboard-error'), 'Memory link copied. Anyone with it can view this memory.');
+    }
+  } catch (error) {
+    setNotice($('#dashboard-error'), error.message || 'Could not copy the link.');
+  } finally {
+    if (button instanceof HTMLButtonElement) { button.disabled = false; button.textContent = '↗ Share'; }
+  }
+}
+
+async function loadMemoryBackground() {
+  const backdrop = $('#memory-backdrop');
+  backdrop.replaceChildren();
+  backdrop.classList.remove('active');
+  try {
+    const { background } = await api('/api/background');
+    if (!background) return;
+    const media = document.createElement(background.kind === 'video' ? 'video' : 'img');
+    media.src = background.mediaUrl;
+    media.alt = '';
+    if (background.kind === 'video') { media.autoplay = true; media.loop = true; media.muted = true; media.playsInline = true; media.preload = 'metadata'; }
+    media.addEventListener('error', () => { backdrop.replaceChildren(); backdrop.classList.remove('active'); }, { once: true });
+    backdrop.append(media);
+    backdrop.classList.add('active');
+  } catch { /* The gallery remains readable if no background is selected. */ }
 }
 
 function createCard(item, index, ownerView = false, sourceItems = items) {
@@ -157,12 +221,11 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
       body.append(owner);
     }
     addMemoryDate(body, item.createdAt);
+    const tools = addMemoryTools(body, item);
     if (ownerView && item.canDelete) {
-      const actions = document.createElement('div');
-      actions.className = 'memory-actions';
-      actions.append(makeButton('Delete', 'delete', () => deleteItem(item.id)));
-      body.append(actions);
+      tools.append(makeButton('Delete', 'delete', () => deleteItem(item.id)));
     }
+    if (tools.hasChildNodes()) body.append(tools);
     card.append(body);
     card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
     return card;
@@ -178,12 +241,14 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
     details.prepend(owner);
   }
   if (ownerView && item.canDelete) {
-    const actions = document.createElement('div');
-    actions.className = 'memory-actions';
     const remove = makeButton('Delete', 'delete', () => deleteItem(item.id));
     remove.setAttribute('aria-label', 'Delete this memory');
-    actions.append(remove);
-    details.append(actions);
+    const tools = addMemoryTools(details, item);
+    tools.append(remove);
+    details.append(tools);
+  } else {
+    const tools = addMemoryTools(details, item);
+    if (tools.hasChildNodes()) details.append(tools);
   }
   card.append(details);
   card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
@@ -281,6 +346,9 @@ async function loadSharedAlbum() {
   $('#intro').classList.add('hidden');
   authPanel.classList.add('hidden');
   dashboard.classList.add('hidden');
+  document.body.dataset.signedIn = 'false';
+  $('#memory-backdrop').replaceChildren();
+  $('#memory-backdrop').classList.remove('active');
   sharedView.classList.remove('hidden');
   try {
     const data = await api(`/api/shared/${encodeURIComponent(shareToken)}`);
@@ -335,6 +403,9 @@ authForm.addEventListener('submit', async (event) => {
 $('#sign-out').addEventListener('click', async () => {
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   dashboard.classList.add('hidden');
+  document.body.dataset.signedIn = 'false';
+  $('#memory-backdrop').replaceChildren();
+  $('#memory-backdrop').classList.remove('active');
   authPanel.classList.remove('hidden');
   setAuthMode('login');
   setNotice($('#auth-error'), 'You are signed out. Sign in to see member memories.');
@@ -382,6 +453,219 @@ $('#contributor-button').addEventListener('click', async (event) => {
     try { await navigator.clipboard.writeText(url); copied = true; } catch { /* Leave link visible to copy manually. */ }
     $('#contributor-status').textContent = copied
       ? 'Upload link copied. Anyone with it can view and add photos/videos.'
-      : 'Copy this link and send it to your girlfri…12496 tokens truncated…er-radius:10px;background:#fff}.admin-media{width:100%;aspect-ratio:4/3;display:block;object-fit:cover;background:#e9e0d8}.admin-memory-body{padding:12px}.admin-memory-owner{font-size:.59rem;color:var(--rose);letter-spacing:.04em}.admin-memory-caption{font:400 .94rem/1.5 var(--serif);margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}.admin-memory-date{display:block;margin:8px 0;color:var(--muted);font-size:.57rem}.delete-memory{min-height:32px;padding:0 10px;background:#fbefed;color:#a0444c}.delete-memory:hover{background:#f4d9d5}.admin-empty{grid-column:1/-1;padding:30px;text-align:center;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.74rem}footer{padding:20px;text-align:center;color:var(--muted);font-size:.57rem;letter-spacing:.17em}@keyframes appear{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@media(max-width:700px){.admin-shell{margin-top:35px}.member-controls{grid-template-columns:1fr 1fr}.save-access{grid-column:1/-1}.admin-memory-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:470px){.admin-summary{gap:7px}.admin-summary>div{padding:12px}.admin-summary b{font-size:1.15rem}.admin-summary span{font-size:.52rem}.memory-tools{display:grid}.memory-tools input{max-width:none}.admin-memory-grid{grid-template-columns:1fr 1fr;gap:9px}.admin-memory-body{padding:9px}.member-controls{grid-template-columns:1fr}.save-access{grid-column:auto}.login-card{padding:26px}.admin-top{height:60px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
-.admin-media-error{aspect-ratio:4/3;display:grid;place-items:center;padding:16px;color:var(--muted);font-size:.75rem;background:#eee4dd}
-.admin-tools-card{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:24px 0 30px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#fffdfa,#fbf1ee);box-shadow:0 14px 44px #45382c0b}.admin-upload,.admin-story-share{display:grid;align-content:start;gap:13px;padding:22px}.admin-story-share{border-left:1px solid var(--line);background:#fff9f5;border-radius:0 14px 14px 0}.admin-tool-copy h2{font:400 1.55rem var(--serif);margin:8px 0 5px}.admin-tool-copy p{font-size:.69rem;line-height:1.6;color:var(--muted);margin:0}.admin-file-pick{position:relative;display:flex;align-items:center;gap:10px;min-height:46px;padding:10px 13px;border:1px dashed #caa9a7;border-radius:8px;background:#fffdfa;color:var(--rose-dark);font-size:.72rem;font-weight:650;cursor:pointer;overflow:hidden}.admin-file-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.admin-caption{display:grid;gap:6px;color:var(--muted);font-size:.62rem}.admin-caption input,.story-link-url{height:40px;width:100%;padding:0 11px;border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink);font:400 .72rem var(--sans)}.admin-tool-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}.admin-tool-actions>span{color:var(--muted);font-size:.59rem}.admin-share-note{color:var(--muted);font-size:.58rem;line-height:1.6}.story-link-url{color:var(--rose-dark)}@media(max-width:700px){.admin-tools-card{grid-template-columns:1fr}.admin-story-share{border-left:0;border-top:1px solid var(--line);border-radius:0 0 14px 14px}.admin-upload,.admin-story-share{padding:18px}}
+      : 'Copy this link and send it to your girlfriend.';
+    $('#revoke-contributor').classList.remove('hidden');
+    button.textContent = 'Copy upload link';
+    if (!copied) { field.focus(); field.select(); }
+  } catch (error) {
+    $('#contributor-status').textContent = error.message;
+    button.textContent = 'Try again';
+  } finally { button.disabled = false; }
+});
+
+$('#revoke-contributor').addEventListener('click', async (event) => {
+  if (!window.confirm('Revoke this upload link? It will stop working for everyone.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/contributor-link', { method: 'DELETE' });
+    $('#contributor-status').textContent = 'Upload link revoked.';
+    $('#contributor-button').textContent = 'Create upload link';
+    $('#contributor-url').value = '';
+    $('#contributor-url').classList.add('hidden');
+    button.classList.add('hidden');
+  } catch (error) { $('#contributor-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+
+const contributorFile = $('#contributor-file');
+contributorFile.addEventListener('change', () => {
+  const files = Array.from(contributorFile.files);
+  $('#contributor-file-label').textContent = files.length === 1
+    ? `${files[0].name} · ${(files[0].size / 1024 / 1024).toFixed(1)} MB`
+    : files.length ? `${files.length} photos or videos selected` : 'Choose photos or videos';
+});
+$('#contributor-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const files = Array.from(contributorFile.files);
+  if (!files.length) return;
+  if (files.some((file) => file.size > 100 * 1024 * 1024)) {
+    setNotice($('#shared-error'), 'Each photo or video must be smaller than 100 MB.');
+    return;
+  }
+  const button = $('#contributor-submit');
+  button.disabled = true;
+  const hint = form.querySelector('.contributor-hint');
+  const defaultHint = 'This private link lets you add photos and videos to the album.';
+  button.textContent = 'Adding memories…';
+  setNotice($('#shared-error'));
+  let uploadedCount = 0;
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      hint.textContent = `Uploading ${index + 1} of ${files.length}…`;
+      const payload = new FormData();
+      payload.append('file', files[index]);
+      payload.append('caption', form.elements.caption.value);
+      await api(`/api/contribute/${encodeURIComponent(contributorToken)}/media`, { method: 'POST', body: payload });
+      uploadedCount += 1;
+    }
+    form.reset();
+    $('#contributor-file-label').textContent = 'Choose photos or videos';
+    await loadContributorAlbum();
+    $('#shared-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    if (uploadedCount) {
+      form.reset();
+      $('#contributor-file-label').textContent = 'Choose photos or videos';
+      await loadContributorAlbum();
+      setNotice($('#shared-error'), `${uploadedCount} ${uploadedCount === 1 ? 'file was' : 'files were'} added. Select any remaining files again. ${error.message}`);
+    } else setNotice($('#shared-error'), error.message);
+  }
+  finally { hint.textContent = defaultHint; button.disabled = false; button.innerHTML = 'Add to our memories <span>♡</span>'; }
+});
+for (const eventName of ['dragenter', 'dragover']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.add('dragover'); });
+for (const eventName of ['dragleave', 'drop']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.remove('dragover'); });
+dropzone.addEventListener('drop', (event) => {
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  fileInput.files = transfer.files;
+  fileInput.dispatchEvent(new Event('change'));
+});
+
+$('#upload-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const file = fileInput.files[0];
+  if (!file) return;
+  if (file.size > 100 * 1024 * 1024) {
+    setNotice($('#dashboard-error'), 'Choose a photo or video smaller than 100 MB.');
+    return;
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  const payload = new FormData(form);
+  setBusy(form, true);
+  submit.textContent = 'Uploading…';
+  $('#upload-progress').textContent = 'Saving to the shared gallery…';
+  setNotice($('#dashboard-error'));
+  try {
+    await api('/api/media', { method: 'POST', body: payload });
+    form.reset();
+    $('#file-label').textContent = 'Choose a photo or video';
+    $('#upload-progress').textContent = 'Shared with signed-in members';
+    await loadItems();
+  } catch (error) {
+    setNotice($('#dashboard-error'), error.message);
+    $('#upload-progress').textContent = 'Upload did not finish.';
+  } finally {
+    setBusy(form, false);
+    submit.innerHTML = 'Upload memory <b>↗</b>';
+  }
+});
+
+$('#share-button').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.textContent = 'Making link…';
+  button.disabled = true;
+  try {
+    const data = await api('/api/share', { method: 'POST' });
+    const linkField = $('#share-url');
+    linkField.value = data.url;
+    linkField.classList.remove('hidden');
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(data.url);
+      copied = true;
+    } catch { /* The read-only link stays visible for manual copying. */ }
+    $('#share-status').textContent = copied
+      ? 'Album link copied. Anyone with it can view your memories.'
+      : 'Copy this link to share your album with someone.';
+    button.textContent = 'Copy album link';
+    $('#revoke-share').classList.remove('hidden');
+    if (!copied) {
+      linkField.focus();
+      linkField.select();
+    }
+  } catch (error) {
+    $('#share-status').textContent = error.message;
+    button.textContent = 'Try again';
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#revoke-share').addEventListener('click', async (event) => {
+  if (!window.confirm('Turn off this album link? Anyone who has it will lose access to the album.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/share', { method: 'DELETE' });
+    $('#share-status').textContent = 'Link revoked. Signed-in members can still see memories allowed for this album.';
+    $('#share-button').textContent = 'Create share link';
+    $('#share-url').value = '';
+    $('#share-url').classList.add('hidden');
+    button.classList.add('hidden');
+  } catch (error) {
+    $('#share-status').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#lb-close').addEventListener('click', closeViewer);
+$('#lb-prev').addEventListener('click', () => moveViewer(-1));
+$('#lb-next').addEventListener('click', () => moveViewer(1));
+$('#lightbox').addEventListener('click', (event) => { if (event.target.id === 'lightbox') closeViewer(); });
+document.addEventListener('keydown', (event) => {
+  if ($('#lightbox').classList.contains('hidden')) return;
+  if (event.key === 'Escape') closeViewer();
+  if (event.key === 'ArrowLeft') moveViewer(-1);
+  if (event.key === 'ArrowRight') moveViewer(1);
+});
+let touchStartX = 0;
+$('#lightbox').addEventListener('touchstart', (event) => { touchStartX = event.changedTouches[0].screenX; }, { passive: true });
+$('#lightbox').addEventListener('touchend', (event) => {
+  const delta = event.changedTouches[0].screenX - touchStartX;
+  if (Math.abs(delta) > 55) moveViewer(delta < 0 ? 1 : -1);
+}, { passive: true });
+
+document.querySelectorAll('.mobile-dock [data-scroll-to]').forEach((button) => button.addEventListener('click', () => {
+  document.getElementById(button.dataset.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}));
+
+let installPrompt = null;
+const installButton = $('#install-app');
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  installButton.classList.remove('hidden');
+});
+installButton.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  await installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  installButton.classList.add('hidden');
+});
+window.addEventListener('appinstalled', () => installButton.classList.add('hidden'));
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+addEventListener('scroll', () => {
+  const scrollable = document.documentElement.scrollHeight - innerHeight;
+  $('#progress').style.width = `${scrollable > 0 ? scrollY / scrollable * 100 : 0}%`;
+}, { passive: true });
+
+if (adminPath) {
+  location.replace('/Admin/login');
+} else if (contributorToken) {
+  loadContributorAlbum();
+} else if (shareToken) {
+  loadSharedAlbum();
+} else {
+  api('/api/auth/me').then(({ user }) => showDashboard(user)).catch((error) => {
+    if (error.status !== 401) setNotice($('#auth-error'), error.message);
+  });
+}

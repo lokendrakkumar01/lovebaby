@@ -37,6 +37,7 @@ const systemGalleryId = new ObjectId('000000000000000000000001');
 await users.createIndex({ email: 1 }, { unique: true });
 await users.createIndex({ shareToken: 1 }, { unique: true, sparse: true });
 await users.createIndex({ contributorToken: 1 }, { unique: true, sparse: true });
+await entries.createIndex({ memoryShareToken: 1 }, { unique: true, sparse: true });
 await entries.createIndex({ ownerId: 1, createdAt: -1 });
 await entries.createIndex({ shareToken: 1, createdAt: -1 });
 await users.updateOne({ _id: systemGalleryId }, { $setOnInsert: {
@@ -75,7 +76,7 @@ const sessionCookie = {
   secure: isProduction,
   sameSite: 'lax',
   path: '/',
-  maxAge: 7 * 24 * 60 * 60 * 1000
+  maxAge: 30 * 24 * 60 * 60 * 1000
 };
 const adminCookie = { ...sessionCookie, maxAge: 4 * 60 * 60 * 1000 };
 const sessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many sign-in attempts. Please try again in 15 minutes.' } });
@@ -146,6 +147,7 @@ async function requireUser(req, res, next) {
   const user = await users.findOne({ _id: new ObjectId(session.sub) });
   if (!user || (user.sessionVersion || 0) !== session.ver) return res.status(401).json({ error: 'Please sign in again.' });
   if (user.suspended) return res.status(403).json({ error: 'This account has been disabled. Contact the site administrator.' });
+  if (session.exp - Date.now() < 7 * 24 * 60 * 60 * 1000) res.cookie('lm_session', signSession(user), sessionCookie);
   req.user = user;
   next();
 }
@@ -365,11 +367,13 @@ app.delete('/api/items/:id', requireUser, async (req, res) => {
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: req.user._id });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   if (entry.publicId) await destroyCloudMedia(entry);
+  const settings = await users.findOne({ _id: systemGalleryId }, { projection: { backgroundMemoryId: 1 } });
+  if (settings?.backgroundMemoryId === entry._id.toString()) await users.updateOne({ _id: systemGalleryId }, { $unset: { backgroundMemoryId: '' } });
   await entries.deleteOne({ _id: entry._id, ownerId: req.user._id });
   res.json({ ok: true });
 });
 
-async function streamMedia(req, res, entry) {
+async function streamMedia(req, res, entry, { attachment = false } = {}) {
   if (!entry?.publicId) return res.status(404).json({ error: 'That memory was not found.' });
   const headers = {};
   if (req.headers.range) headers.Range = req.headers.range;
@@ -390,6 +394,10 @@ async function streamMedia(req, res, entry) {
     if (value) res.set(name, value);
   }
   res.set('Cache-Control', 'private, no-store');
+  if (attachment) {
+    const extension = /^[a-z0-9]{1,8}$/i.test(entry.format || '') ? entry.format : (entry.kind === 'video' ? 'mp4' : 'jpg');
+    res.set('Content-Disposition', `attachment; filename="memory-${entry._id}.${extension}"`);
+  }
   res.status(cloudResponse.status);
   if (!cloudResponse.body) return res.end();
   Readable.fromWeb(cloudResponse.body).pipe(res);
@@ -409,7 +417,58 @@ app.get('/api/media/:id', requireUser, async (req, res) => {
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { _id: 1, visibility: 1, visibleTo: 1 } });
   if (!owner || !albumVisibleTo(owner, req.user)) return res.status(404).json({ error: 'That memory was not found.' });
-  await streamMedia(req, res, entry);
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
+});
+
+app.post('/api/items/:id/share', requireUser, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  const entry = await entries.findOne({ _id: new ObjectId(req.params.id) });
+  if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
+  const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { _id: 1, visibility: 1, visibleTo: 1, sharingDisabled: 1 } });
+  if (!owner || !albumVisibleTo(owner, req.user) || owner.sharingDisabled || (owner.visibility && owner.visibility !== 'all')) {
+    return res.status(403).json({ error: 'This memory is not available for public sharing.' });
+  }
+  const memoryShareToken = entry.memoryShareToken || crypto.randomBytes(32).toString('base64url');
+  await entries.updateOne({ _id: entry._id }, { $set: { memoryShareToken } });
+  res.json({ url: `${req.protocol}://${req.get('host')}/memory/${memoryShareToken}` });
+});
+
+app.get('/api/memory/:token', async (req, res) => {
+  const entry = await entries.findOne({ memoryShareToken: req.params.token });
+  if (!entry) return res.status(404).json({ error: 'This memory link is no longer available.' });
+  const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { _id: 1, name: 1, visibility: 1, isSystemGallery: 1 } });
+  if (!owner || (!owner.isSystemGallery && owner.visibility && owner.visibility !== 'all')) return res.status(404).json({ error: 'This memory link is no longer available.' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ item: { ...cleanEntry(entry), mediaUrl: entry.publicId ? `/api/memory/${encodeURIComponent(req.params.token)}/media` : null, ownerName: owner.name } });
+});
+
+app.get('/api/memory/:token/media', async (req, res) => {
+  const entry = await entries.findOne({ memoryShareToken: req.params.token, kind: { $in: ['image', 'video'] } });
+  if (!entry) return res.status(404).json({ error: 'This memory link is no longer available.' });
+  const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { visibility: 1, isSystemGallery: 1 } });
+  if (!owner || (!owner.isSystemGallery && owner.visibility && owner.visibility !== 'all')) return res.status(404).json({ error: 'This memory link is no longer available.' });
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
+});
+
+app.get('/api/background', requireUser, async (req, res) => {
+  const settings = await users.findOne({ _id: systemGalleryId }, { projection: { backgroundMemoryId: 1 } });
+  if (!settings?.backgroundMemoryId || !ObjectId.isValid(settings.backgroundMemoryId)) return res.json({ background: null });
+  const entry = await entries.findOne({ _id: new ObjectId(settings.backgroundMemoryId), kind: { $in: ['image', 'video'] } }, { projection: { _id: 1, kind: 1, ownerId: 1 } });
+  if (!entry) return res.json({ background: null });
+  const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { _id: 1, visibility: 1, visibleTo: 1 } });
+  if (!owner || !albumVisibleTo(owner, req.user)) return res.json({ background: null });
+  res.json({ background: { kind: entry.kind, mediaUrl: `/api/background/media` } });
+});
+
+app.get('/api/background/media', requireUser, async (req, res) => {
+  const settings = await users.findOne({ _id: systemGalleryId }, { projection: { backgroundMemoryId: 1 } });
+  if (!settings?.backgroundMemoryId || !ObjectId.isValid(settings.backgroundMemoryId)) return res.status(404).end();
+  const entry = await entries.findOne({ _id: new ObjectId(settings.backgroundMemoryId), kind: { $in: ['image', 'video'] } });
+  if (!entry) return res.status(404).end();
+  const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true } }, { projection: { _id: 1, visibility: 1, visibleTo: 1 } });
+  if (!owner || !albumVisibleTo(owner, req.user)) return res.status(404).end();
+  res.set('Cache-Control', 'private, max-age=300');
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
 
 app.get('/api/shared/:token/media/:id', async (req, res) => {
@@ -418,7 +477,7 @@ app.get('/api/shared/:token/media/:id', async (req, res) => {
   if (!owner) return res.status(404).json({ error: 'This album link is no longer available.' });
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: owner._id, kind: { $in: ['image', 'video'] } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
-  await streamMedia(req, res, entry);
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
 
 app.post('/api/share', requireUser, async (req, res) => {
@@ -497,6 +556,26 @@ app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
   if (suspended) update.$inc = { sessionVersion: 1 };
   if (visibility !== 'all' || suspended) update.$unset = { shareToken: '', contributorToken: '', shareCreatedAt: '' };
   await users.updateOne({ _id: userId }, update);
+  if (visibility !== 'all' || suspended) await entries.updateMany({ ownerId: userId }, { $unset: { memoryShareToken: '' } });
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/background', requireAdmin, async (_req, res) => {
+  const settings = await users.findOne({ _id: systemGalleryId }, { projection: { backgroundMemoryId: 1 } });
+  res.json({ memoryId: settings?.backgroundMemoryId || null });
+});
+
+app.put('/api/admin/background', requireAdmin, async (req, res) => {
+  const memoryId = String(req.body?.memoryId || '');
+  if (!ObjectId.isValid(memoryId)) return res.status(400).json({ error: 'Choose a photo or video memory.' });
+  const entry = await entries.findOne({ _id: new ObjectId(memoryId), kind: { $in: ['image', 'video'] } });
+  if (!entry) return res.status(404).json({ error: 'That photo or video was not found.' });
+  await users.updateOne({ _id: systemGalleryId }, { $set: { backgroundMemoryId: entry._id.toString() } });
+  res.json({ ok: true, memoryId: entry._id.toString() });
+});
+
+app.delete('/api/admin/background', requireAdmin, async (_req, res) => {
+  await users.updateOne({ _id: systemGalleryId }, { $unset: { backgroundMemoryId: '' } });
   res.json({ ok: true });
 });
 
@@ -552,14 +631,14 @@ app.get('/api/story/:token/media/:id', async (req, res) => {
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true }, $or: [{ isSystemGallery: true }, { visibility: 'all' }, { visibility: { $exists: false } }] }, { projection: { _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'That memory was not found.' });
-  await streamMedia(req, res, entry);
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
 
 app.get('/api/admin/media/:id', requireAdmin, async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id), kind: { $in: ['image', 'video'] } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
-  await streamMedia(req, res, entry);
+  await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
 
 app.delete('/api/admin/items/:id', requireAdmin, async (req, res) => {
@@ -567,6 +646,10 @@ app.delete('/api/admin/items/:id', requireAdmin, async (req, res) => {
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id) });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   if (entry.publicId) await destroyCloudMedia(entry);
+  if (entry._id.toString() === String((await users.findOne({ _id: systemGalleryId }, { projection: { backgroundMemoryId: 1 } }))?.backgroundMemoryId)) {
+    await users.updateOne({ _id: systemGalleryId }, { $unset: { backgroundMemoryId: '' } });
+  }
+  await entries.updateOne({ _id: entry._id }, { $unset: { memoryShareToken: '' } });
   await entries.deleteOne({ _id: entry._id });
   res.json({ ok: true });
 });
@@ -575,6 +658,7 @@ app.use('/assets', (_req, res) => res.sendStatus(404));
 app.use(express.static('public', { index: 'index.html', maxAge: isProduction ? '1h' : 0, etag: true }));
 app.get(['/s/:token', '/add/:token', '/'], (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
 app.get('/story/:token', (_req, res) => res.sendFile(fileURLToPath(new URL('./public/story.html', import.meta.url))));
+app.get('/memory/:token', (_req, res) => res.sendFile(fileURLToPath(new URL('./public/memory.html', import.meta.url))));
 app.get(['/Admin/login', '/Admin', '/admin/login', '/admin'], (_req, res) => res.sendFile(fileURLToPath(new URL('./public/admin.html', import.meta.url))));
 
 app.use((error, _req, res, _next) => {

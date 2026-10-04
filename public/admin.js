@@ -5,6 +5,7 @@ const loginForm = $('#admin-login');
 const adminUploadForm = $('#admin-upload');
 let members = [];
 let memories = [];
+let backgroundId = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
@@ -198,11 +199,40 @@ function renderMemories() {
       try {
         await api(`/api/admin/items/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
         memories = memories.filter((candidate) => candidate.id !== item.id);
+        if (backgroundId === item.id) { backgroundId = null; $('#clear-background').classList.add('hidden'); }
         renderMemories();
         notice($('#admin-notice'), 'Memory deleted.');
       } catch (error) { notice($('#admin-notice'), error.message); remove.disabled = false; }
     });
-    body.append(remove);
+    const actions = document.createElement('div');
+    actions.className = 'admin-memory-actions';
+    if (item.mediaUrl) {
+      const download = document.createElement('a');
+      download.className = 'set-background';
+      download.href = `${item.mediaUrl}?download=1`;
+      download.download = `memory-${item.id}`;
+      download.textContent = '↓ Download memory';
+      actions.append(download);
+    }
+    if (item.kind === 'image' || item.kind === 'video') {
+      const choose = document.createElement('button');
+      choose.type = 'button';
+      choose.className = 'set-background';
+      choose.textContent = backgroundId === item.id ? '✓ App background' : 'Use as app background';
+      choose.disabled = backgroundId === item.id;
+      choose.addEventListener('click', async () => {
+        choose.disabled = true;
+        try {
+          const result = await api('/api/admin/background', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memoryId: item.id }) });
+          backgroundId = result.memoryId;
+          renderMemories();
+          notice($('#admin-notice'), 'The app background is updated. Members will see it after refreshing their gallery.');
+        } catch (error) { notice($('#admin-notice'), error.message); choose.disabled = false; }
+      });
+      actions.append(choose);
+    }
+    actions.append(remove);
+    body.append(actions);
     card.append(body);
     target.append(card);
   });
@@ -220,11 +250,18 @@ async function loadMemories() {
   renderMemories();
 }
 
+async function loadBackground() {
+  const data = await api('/api/admin/background');
+  backgroundId = data.memoryId;
+  $('#clear-background').classList.toggle('hidden', !backgroundId);
+  if (memories.length) renderMemories();
+}
+
 async function openStudio() {
   displayAdmin();
   notice($('#admin-notice'), 'Loading members and memories…');
   try {
-    await Promise.all([loadMembers(), loadMemories()]);
+    await Promise.all([loadMembers(), loadMemories(), loadBackground()]);
     notice($('#admin-notice'));
   } catch (error) {
     if (error.status === 401) { loginCard.classList.remove('hidden'); adminApp.classList.add('hidden'); }
@@ -259,6 +296,19 @@ document.querySelectorAll('.admin-tabs button').forEach((button) => button.addEv
   document.querySelectorAll('.admin-view').forEach((view) => view.classList.toggle('hidden', view.id !== button.dataset.view));
 }));
 $('#memory-search').addEventListener('input', renderMemories);
+
+$('#clear-background').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/admin/background', { method: 'DELETE' });
+    backgroundId = null;
+    button.classList.add('hidden');
+    renderMemories();
+    notice($('#admin-notice'), 'The app background has been cleared.');
+  } catch (error) { notice($('#admin-notice'), error.message); }
+  finally { button.disabled = false; }
+});
 
 $('#admin-files').addEventListener('change', (event) => {
   const files = Array.from(event.target.files || []);

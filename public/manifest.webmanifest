@@ -1,0 +1,14 @@
+{
+  "name": "Little Moments",
+  "short_name": "Moments",
+  "description": "A shared home for photos, videos and little notes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f1eb",
+  "theme_color": "#f7f1eb",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

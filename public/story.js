@@ -652,6 +652,7 @@ function renderStoryMemories(items) {
     items.forEach((item, index) => {
         const card = document.createElement('article');
         card.className = `story-memory${item.kind === 'note' ? ' story-note' : ''}`;
+        card.id = `memory-${item.id}`;
         card.style.animationDelay = `${Math.min(index * 35, 300)}ms`;
         if (item.kind === 'image' || item.kind === 'video') {
             const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
@@ -684,6 +685,35 @@ function renderStoryMemories(items) {
                 copy.append(time);
             }
         }
+        const actions = document.createElement('div');
+        actions.className = 'story-memory-actions';
+        if (item.mediaUrl) {
+            const download = storyText('a', 'story-memory-action', '↓ Download');
+            download.href = `${item.mediaUrl}?download=1`;
+            download.download = `memory-${item.id}`;
+            actions.append(download);
+        } else if (item.kind === 'note') {
+            const download = storyText('button', 'story-memory-action', '↓ Download note');
+            download.type = 'button';
+            download.addEventListener('click', () => {
+                const url = URL.createObjectURL(new Blob([item.text], { type: 'text/plain;charset=utf-8' }));
+                const link = document.createElement('a');
+                link.href = url; link.download = `memory-${item.id}.txt`; link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            });
+            actions.append(download);
+        }
+        const share = storyText('button', 'story-memory-action', '↗ Share');
+        share.type = 'button';
+        share.addEventListener('click', async () => {
+            const url = `${location.origin}${location.pathname}#memory-${item.id}`;
+            try {
+                if (navigator.share) await navigator.share({ title: item.caption || 'A memory', text: 'A memory to keep', url });
+                else { await navigator.clipboard.writeText(url); storyError.textContent = 'Memory link copied.'; }
+            } catch (error) { if (error.name !== 'AbortError') storyError.textContent = 'Copy the story link from your browser address bar.'; }
+        });
+        actions.append(share);
+        copy.append(actions);
         card.append(copy);
         memoryGrid.append(card);
     });
@@ -710,7 +740,11 @@ const storyRevealObserver = new MutationObserver(() => {
     memoryWall.hidden = false;
     memoryWall.classList.add('story-gallery-visible');
     storyRevealObserver.disconnect();
-    setTimeout(() => memoryWall.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+    setTimeout(() => {
+        const memoryId = location.hash.match(/^#memory-([a-f0-9]{24})$/i)?.[1];
+        const target = memoryId ? document.getElementById(`memory-${memoryId}`) : memoryWall;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 250);
 });
 storyRevealObserver.observe(reveal, { attributes: true, attributeFilter: ['class'] });
 loadStoryMemories();
