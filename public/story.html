@@ -1,0 +1,252 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+>
+
+<title>My Jaan 💗</title>
+
+<link rel="stylesheet" href="/story.css">
+</head>
+
+
+<body>
+
+
+<!-- =======================================================
+     BACKGROUND
+======================================================= -->
+
+<div class="page">
+
+    <div class="aurora"></div>
+
+    <div class="orb orb1"></div>
+
+    <div class="orb orb2"></div>
+
+    <canvas id="particles"></canvas>
+
+</div>
+
+
+<!-- =======================================================
+     STAGE
+======================================================= -->
+
+<main class="stage">
+
+
+<div
+    class="card"
+    id="card"
+>
+
+
+    <div class="card-light"></div>
+
+
+    <!-- CORNER EMOJIS -->
+
+    <div class="corner a">💗</div>
+    <div class="corner b">✨</div>
+    <div class="corner c">🫶</div>
+    <div class="corner d">💘</div>
+
+
+    <!-- =================================================
+         INITIAL GIFT SCREEN
+    ================================================== -->
+
+    <section
+        class="gift-screen"
+        id="giftScreen"
+    >
+
+        <div class="gift-halo"></div>
+
+
+        <div
+            class="gift-wrap"
+            id="gift"
+            aria-label="Open gift"
+        >
+
+            <div class="gift-lid"></div>
+
+            <div class="gift-bow">
+                🎀
+            </div>
+
+            <div class="gift-box"></div>
+
+        </div>
+
+
+        <div
+            class="tap-label"
+            id="tapLabel"
+        >
+            🎁 TAP TO OPEN 🎁
+        </div>
+
+    </section>
+
+
+    <!-- =================================================
+         REVEAL
+    ================================================== -->
+
+    <section
+        class="reveal"
+        id="reveal"
+    >
+
+
+        <!-- HEART -->
+
+        <div class="big-heart">
+
+            <div class="heart-emoji">
+                💖
+            </div>
+
+        </div>
+
+
+        <!-- TITLE -->
+
+        <h1 class="title">
+            Love My Jaan
+        </h1>
+
+
+        <!-- EMOJIS -->
+
+        <div class="emoji-line">
+
+            <span>💗</span>
+            <span>💖</span>
+            <span>💘</span>
+            <span>💕</span>
+            <span>💞</span>
+            <span>💓</span>
+            <span>🥰</span>
+            <span>🫶</span>
+            <span>❤️‍🔥</span>
+
+        </div>
+
+
+        <!-- MAIN CLICK -->
+
+        <button
+            class="main-button"
+            id="mainButton"
+        >
+            💖 CLICK ME 💖
+        </button>
+
+
+        <!-- ACTION BUTTONS -->
+
+        <div class="action-row">
+
+
+            <button
+                class="action"
+                data-type="love"
+                aria-label="Love"
+            >
+                💗
+            </button>
+
+
+            <button
+                class="action"
+                data-type="kiss"
+                aria-label="Kiss"
+            >
+                😘
+            </button>
+
+
+            <button
+                class="action"
+                data-type="hug"
+                aria-label="Hug"
+            >
+                🫂
+            </button>
+
+
+            <button
+                class="action"
+                data-type="heart"
+                aria-label="Heart"
+            >
+                💘
+            </button>
+
+
+            <button
+                class="action"
+                data-type="flower"
+                aria-label="Flowers"
+            >
+                🌹
+            </button>
+
+
+            <button
+                class="action"
+                data-type="sparkle"
+                aria-label="Sparkle"
+            >
+                ✨
+            </button>
+
+
+            <button
+                class="action"
+                data-type="party"
+                aria-label="Party"
+            >
+                🎉
+            </button>
+
+
+            <button
+                class="action"
+                data-type="fire"
+                aria-label="Fire"
+            >
+                ❤️‍🔥
+            </button>
+
+
+        </div>
+
+
+    </section>
+
+
+</div>
+
+</main>
+<section class="story-gallery" id="memoryWall" aria-labelledby="memoryHeading" hidden>
+  <header class="story-gallery-head"><span class="story-gallery-kicker">A COLLECTION OF LITTLE MOMENTS</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p></header>
+  <div class="story-grid" id="story-memories"></div>
+  <p class="story-load-error" id="story-error" role="status"></p>
+</section>
+
+
+<script src="/story.js" defer></script>
+
+</body>
+</html>

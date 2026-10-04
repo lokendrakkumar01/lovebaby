@@ -1,0 +1,1038 @@
+
+
+/* =========================================================
+   ELEMENTS
+========================================================= */
+
+const card =
+    document.getElementById("card");
+
+const gift =
+    document.getElementById("gift");
+
+const giftScreen =
+    document.getElementById("giftScreen");
+
+const reveal =
+    document.getElementById("reveal");
+
+const tapLabel =
+    document.getElementById("tapLabel");
+
+const mainButton =
+    document.getElementById("mainButton");
+
+
+/* =========================================================
+   EMOJI COLLECTIONS
+========================================================= */
+
+const emojiSets = {
+
+    love:[
+        "💗",
+        "💖",
+        "💘",
+        "💕",
+        "💞",
+        "💓",
+        "💝",
+        "🩷",
+        "❤️"
+    ],
+
+    kiss:[
+        "😘",
+        "💋",
+        "🥰",
+        "😍",
+        "💗",
+        "💕",
+        "💖"
+    ],
+
+    hug:[
+        "🫂",
+        "🤗",
+        "🥰",
+        "🫶",
+        "💗",
+        "💕",
+        "💞"
+    ],
+
+    heart:[
+        "💘",
+        "💝",
+        "💖",
+        "💗",
+        "💓",
+        "💕",
+        "❤️‍🔥"
+    ],
+
+    flower:[
+        "🌹",
+        "🌸",
+        "🌷",
+        "🌺",
+        "🌻",
+        "💐",
+        "🪷",
+        "🌼"
+    ],
+
+    sparkle:[
+        "✨",
+        "💫",
+        "🌟",
+        "⭐",
+        "🪄",
+        "💖"
+    ],
+
+    party:[
+        "🎉",
+        "🎊",
+        "🥳",
+        "🎀",
+        "✨",
+        "💖",
+        "💃"
+    ],
+
+    fire:[
+        "❤️‍🔥",
+        "🔥",
+        "💖",
+        "💗",
+        "💘",
+        "✨"
+    ]
+
+};
+
+
+/* =========================================================
+   RANDOM ITEM
+========================================================= */
+
+function randomItem(array){
+
+    return array[
+        Math.floor(
+            Math.random() *
+            array.length
+        )
+    ];
+
+}
+
+
+/* =========================================================
+   GIFT OPEN
+========================================================= */
+
+let opened = false;
+
+gift.addEventListener(
+    "click",
+    openGift
+);
+
+gift.addEventListener(
+    "touchend",
+    function(e){
+
+        e.preventDefault();
+
+        openGift();
+
+    }
+);
+
+
+function openGift(){
+
+    if(opened)
+        return;
+
+    opened = true;
+
+
+    /* gift animation */
+
+    gift.classList.add("open");
+
+    tapLabel.innerHTML =
+        "💖 💗 💕 💘 💞 💓 💝";
+
+
+    /* small delay before reveal */
+
+    setTimeout(
+        ()=>{
+
+            giftScreen.classList.add("hide");
+
+        },
+        650
+    );
+
+
+    /* celebration */
+
+    setTimeout(
+        ()=>{
+
+            celebration(
+                window.innerWidth / 2,
+                window.innerHeight / 2
+            );
+
+        },
+        500
+    );
+
+
+    /* reveal title */
+
+    setTimeout(
+        ()=>{
+
+            reveal.classList.add("show");
+
+        },
+        900
+    );
+
+}
+
+
+/* =========================================================
+   CELEBRATION
+========================================================= */
+
+function celebration(x,y){
+
+    createFlash();
+
+
+    const collection =
+        emojiSets.love;
+
+
+    /* center explosion */
+
+    for(
+        let i=0;
+        i<75;
+        i++
+    ){
+
+        setTimeout(
+            ()=>{
+
+                createBurst(
+                    x,
+                    y,
+                    collection
+                );
+
+            },
+            i * 13
+        );
+
+    }
+
+
+    /* falling emojis */
+
+    for(
+        let i=0;
+        i<45;
+        i++
+    ){
+
+        setTimeout(
+            ()=>{
+
+                createFloating(
+                    randomItem(collection),
+                    Math.random()*innerWidth,
+                    -30
+                );
+
+            },
+            i * 30
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   MAIN BUTTON
+========================================================= */
+
+mainButton.addEventListener(
+    "click",
+    ()=>{
+
+        const collection =
+            emojiSets.love;
+
+
+        createFlash();
+
+
+        for(
+            let i=0;
+            i<45;
+            i++
+        ){
+
+            setTimeout(
+                ()=>{
+
+                    createBurst(
+                        innerWidth/2,
+                        innerHeight/2,
+                        collection
+                    );
+
+                },
+                i*18
+            );
+
+        }
+
+
+        for(
+            let i=0;
+            i<30;
+            i++
+        ){
+
+            setTimeout(
+                ()=>{
+
+                    createFloating(
+                        randomItem(collection),
+                        Math.random()*innerWidth,
+                        innerHeight + 30
+                    );
+
+                },
+                i*35
+            );
+
+        }
+
+
+        mainButton.innerHTML =
+            "💗 💖 💕 💘 💞 💓";
+
+
+        setTimeout(
+            ()=>{
+
+                mainButton.innerHTML =
+                    "💖 CLICK ME 💖";
+
+            },
+            1800
+        );
+
+    }
+);
+
+
+/* =========================================================
+   ACTION BUTTONS
+========================================================= */
+
+document
+.querySelectorAll(".action")
+.forEach(
+    button=>{
+
+        button.addEventListener(
+            "click",
+            ()=>{
+
+                const type =
+                    button.dataset.type;
+
+                const collection =
+                    emojiSets[type];
+
+
+                /* burst */
+
+                for(
+                    let i=0;
+                    i<22;
+                    i++
+                ){
+
+                    setTimeout(
+                        ()=>{
+
+                            createBurst(
+                                innerWidth/2,
+                                innerHeight/2,
+                                collection
+                            );
+
+                        },
+                        i*20
+                    );
+
+                }
+
+
+                /* floating */
+
+                for(
+                    let i=0;
+                    i<16;
+                    i++
+                ){
+
+                    setTimeout(
+                        ()=>{
+
+                            createFloating(
+                                randomItem(collection),
+                                Math.random()*innerWidth,
+                                innerHeight + 20
+                            );
+
+                        },
+                        i*35
+                    );
+
+                }
+
+            }
+        );
+
+    }
+);
+
+
+/* =========================================================
+   BURST
+========================================================= */
+
+function createBurst(
+    x,
+    y,
+    collection
+){
+
+    const element =
+        document.createElement("div");
+
+
+    element.className =
+        "burst";
+
+
+    element.textContent =
+        randomItem(collection);
+
+
+    element.style.left =
+        x + "px";
+
+
+    element.style.top =
+        y + "px";
+
+
+    element.style.setProperty(
+        "--x",
+        (Math.random()*420 - 210) + "px"
+    );
+
+
+    element.style.setProperty(
+        "--y",
+        (Math.random()*420 - 210) + "px"
+    );
+
+
+    element.style.setProperty(
+        "--r",
+        (Math.random()*720 - 360) + "deg"
+    );
+
+
+    document.body.appendChild(
+        element
+    );
+
+
+    setTimeout(
+        ()=>element.remove(),
+        1000
+    );
+
+}
+
+
+/* =========================================================
+   FLOATING EMOJI
+========================================================= */
+
+function createFloating(
+    emoji,
+    x,
+    y
+){
+
+    const element =
+        document.createElement("div");
+
+
+    element.className =
+        "float-emoji";
+
+
+    element.textContent =
+        emoji;
+
+
+    const endX =
+        x +
+        (Math.random()*260 - 130);
+
+
+    const midX =
+        x +
+        (Math.random()*180 - 90);
+
+
+    element.style.setProperty(
+        "--start-x",
+        x + "px"
+    );
+
+
+    element.style.setProperty(
+        "--start-y",
+        y + "px"
+    );
+
+
+    element.style.setProperty(
+        "--mid-x",
+        midX + "px"
+    );
+
+
+    element.style.setProperty(
+        "--mid-y",
+        (y - innerHeight*.45) + "px"
+    );
+
+
+    element.style.setProperty(
+        "--end-x",
+        endX + "px"
+    );
+
+
+    element.style.setProperty(
+        "--end-y",
+        (y - innerHeight - 100) + "px"
+    );
+
+
+    element.style.setProperty(
+        "--duration",
+        (4 + Math.random()*3) + "s"
+    );
+
+
+    document.body.appendChild(
+        element
+    );
+
+
+    setTimeout(
+        ()=>element.remove(),
+        8000
+    );
+
+}
+
+
+/* =========================================================
+   FLASH
+========================================================= */
+
+function createFlash(){
+
+    const flash =
+        document.createElement("div");
+
+    flash.className =
+        "flash";
+
+    document.body.appendChild(
+        flash
+    );
+
+    setTimeout(
+        ()=>flash.remove(),
+        800
+    );
+
+}
+
+
+/* =========================================================
+   CONTROLLED BACKGROUND EMOJIS
+========================================================= */
+
+setInterval(
+    ()=>{
+
+        if(
+            !opened ||
+            document.hidden
+        )
+            return;
+
+
+        createFloating(
+            randomItem(
+                [
+                    "💗",
+                    "✨",
+                    "💕",
+                    "💖"
+                ]
+            ),
+
+            Math.random() *
+            innerWidth,
+
+            innerHeight + 30
+
+        );
+
+    },
+    1100
+);
+
+/* Load every shared album memory into the surprise page after the gift opens. */
+const storyToken = location.pathname.match(/^\/story\/([A-Za-z0-9_-]{30,})\/?$/)?.[1];
+const memoryWall = document.getElementById('memoryWall');
+const memoryGrid = document.getElementById('story-memories');
+const storyError = document.getElementById('story-error');
+
+function storyText(tag, className, value) {
+    const element = document.createElement(tag);
+    element.className = className;
+    element.textContent = value;
+    return element;
+}
+
+function renderStoryMemories(items) {
+    memoryGrid.replaceChildren();
+    if (!items.length) {
+        memoryGrid.append(storyText('p', 'story-load-error', 'The memory gallery is waiting for its first photo, video or note.'));
+        return;
+    }
+    items.forEach((item, index) => {
+        const card = document.createElement('article');
+        card.className = `story-memory${item.kind === 'note' ? ' story-note' : ''}`;
+        card.style.animationDelay = `${Math.min(index * 35, 300)}ms`;
+        if (item.kind === 'image' || item.kind === 'video') {
+            const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
+            media.className = 'story-media';
+            media.src = item.mediaUrl;
+            media.alt = item.caption || 'A memory shared with love';
+            if (item.kind === 'video') {
+                media.controls = true;
+                media.preload = 'metadata';
+                media.playsInline = true;
+            } else {
+                media.loading = 'lazy';
+                media.decoding = 'async';
+            }
+            media.addEventListener('error', () => {
+                media.replaceWith(storyText('div', 'story-media story-media-error', 'This memory could not be loaded right now.'));
+            }, { once: true });
+            card.append(media);
+        }
+        const copy = document.createElement('div');
+        copy.className = 'story-memory-copy';
+        const caption = item.kind === 'note' ? item.text : (item.caption || (item.kind === 'video' ? 'A little video memory' : 'A little photo memory'));
+        copy.append(storyText('p', 'story-memory-caption', caption));
+        if (item.ownerName) copy.append(storyText('small', 'story-memory-byline', `Shared by ${item.ownerName}`));
+        if (item.createdAt) {
+            const date = new Date(item.createdAt);
+            if (!Number.isNaN(date.valueOf())) {
+                const time = storyText('time', 'story-memory-date', date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }));
+                time.dateTime = item.createdAt;
+                copy.append(time);
+            }
+        }
+        card.append(copy);
+        memoryGrid.append(card);
+    });
+}
+
+async function loadStoryMemories() {
+    if (!storyToken) {
+        storyError.textContent = 'This story link is incomplete.';
+        return;
+    }
+    try {
+        const response = await fetch(`/api/story/${encodeURIComponent(storyToken)}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Memories could not be loaded.');
+        renderStoryMemories(data.items || []);
+        document.getElementById('storySubtitle').textContent = `${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'} shared with love.`;
+    } catch (error) {
+        storyError.textContent = error.message;
+    }
+}
+
+const storyRevealObserver = new MutationObserver(() => {
+    if (!reveal.classList.contains('show')) return;
+    memoryWall.hidden = false;
+    memoryWall.classList.add('story-gallery-visible');
+    storyRevealObserver.disconnect();
+    setTimeout(() => memoryWall.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+});
+storyRevealObserver.observe(reveal, { attributes: true, attributeFilter: ['class'] });
+loadStoryMemories();
+
+
+/* =========================================================
+   MOUSE 3D EFFECT
+========================================================= */
+
+document.addEventListener(
+    "mousemove",
+    e=>{
+
+        if(
+            window.innerWidth <= 700
+        )
+            return;
+
+
+        const x =
+            e.clientX /
+            window.innerWidth -
+            .5;
+
+
+        const y =
+            e.clientY /
+            window.innerHeight -
+            .5;
+
+
+        card.style.transform =
+
+            `rotateX(${-y*5}deg)
+             rotateY(${x*7}deg)`;
+
+    }
+);
+
+
+/* reset */
+
+document.addEventListener(
+    "mouseleave",
+    ()=>{
+
+        card.style.transform =
+            "rotateX(0deg) rotateY(0deg)";
+
+    }
+);
+
+
+/* =========================================================
+   CLICK ANYWHERE → SMALL HEART
+========================================================= */
+
+document.addEventListener(
+    "click",
+    e=>{
+
+        if(
+            e.target.closest(".gift-wrap") ||
+            e.target.closest(".main-button") ||
+            e.target.closest(".action")
+        )
+            return;
+
+
+        if(!opened)
+            return;
+
+
+        createBurst(
+            e.clientX,
+            e.clientY,
+            emojiSets.love
+        );
+
+    }
+);
+
+
+/* =========================================================
+   TOUCH EFFECT
+========================================================= */
+
+document.addEventListener(
+    "touchstart",
+    e=>{
+
+        if(!opened)
+            return;
+
+
+        const touch =
+            e.touches[0];
+
+
+        if(!touch)
+            return;
+
+
+        createBurst(
+            touch.clientX,
+            touch.clientY,
+            emojiSets.love
+        );
+
+    },
+    {passive:true}
+);
+
+
+/* =========================================================
+   PARTICLE SYSTEM
+========================================================= */
+
+const canvas =
+    document.getElementById(
+        "particles"
+    );
+
+const ctx =
+    canvas.getContext("2d");
+
+
+let particles = [];
+
+
+function resizeCanvas(){
+
+    canvas.width =
+        window.innerWidth *
+        window.devicePixelRatio;
+
+    canvas.height =
+        window.innerHeight *
+        window.devicePixelRatio;
+
+
+    canvas.style.width =
+        window.innerWidth + "px";
+
+    canvas.style.height =
+        window.innerHeight + "px";
+
+
+    ctx.setTransform(
+        window.devicePixelRatio,
+        0,
+        0,
+        window.devicePixelRatio,
+        0,
+        0
+    );
+
+}
+
+
+resizeCanvas();
+
+
+window.addEventListener(
+    "resize",
+    resizeCanvas
+);
+
+
+/* create particles */
+
+for(
+    let i=0;
+    i<90;
+    i++
+){
+
+    particles.push({
+
+        x:
+            Math.random() *
+            window.innerWidth,
+
+        y:
+            Math.random() *
+            window.innerHeight,
+
+        size:
+            Math.random()*1.8+.3,
+
+        speed:
+            Math.random()*.35+.05,
+
+        alpha:
+            Math.random()*.7+.1,
+
+        drift:
+            Math.random()*1.2-0.6
+
+    });
+
+}
+
+
+/* animate */
+
+function animateParticles(){
+
+    ctx.clearRect(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+    );
+
+
+    particles.forEach(
+        p=>{
+
+            p.y -= p.speed;
+
+            p.x +=
+                Math.sin(
+                    p.y*.008
+                ) *
+                .15 +
+                p.drift*.02;
+
+
+            if(p.y < -10){
+
+                p.y =
+                    window.innerHeight +
+                    10;
+
+                p.x =
+                    Math.random() *
+                    window.innerWidth;
+
+            }
+
+
+            ctx.beginPath();
+
+
+            ctx.arc(
+                p.x,
+                p.y,
+                p.size,
+                0,
+                Math.PI*2
+            );
+
+
+            ctx.fillStyle =
+                `rgba(
+                    255,
+                    180,
+                    215,
+                    ${p.alpha}
+                )`;
+
+
+            ctx.fill();
+
+        }
+    );
+
+
+    requestAnimationFrame(
+        animateParticles
+    );
+
+}
+
+
+animateParticles();
+
+
+/* =========================================================
+   CHANGE MAIN HEART DYNAMICALLY
+========================================================= */
+
+const heart =
+    document.querySelector(
+        ".heart-emoji"
+    );
+
+
+const heartTypes = [
+
+    "💖",
+    "💗",
+    "💘",
+    "💝",
+    "💞",
+    "🩷",
+    "❤️‍🔥"
+
+];
+
+
+let heartIndex = 0;
+
+
+setInterval(
+    ()=>{
+
+        if(!opened)
+            return;
+
+
+        heartIndex++;
+
+
+        heart.textContent =
+            heartTypes[
+                heartIndex %
+                heartTypes.length
+            ];
+
+    },
+    1800
+);
+

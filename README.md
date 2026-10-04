@@ -18,6 +18,7 @@ If you prefer not to use a Blueprint, create a **Web Service** connected to the 
 
 - By default, every signed-in member can see each member's memories. New members must acknowledge this when registering. Existing accounts also use this default unless the admin changes access.
 - The admin portal at `/Admin/login` can see every account and memory, suspend accounts, delete memories, and set each album to all members, selected members, or its owner only. Restricted albums lose their public view and contributor links.
+- Admins can upload photos and videos into the shared Admin gallery and create a revocable `/story/...` link that opens the animated gift page from the supplied design. The page loads current memories from active albums set to all signed-in members; anyone with the link can view those eligible memories.
 - Users can add notes, photos, and videos. Cloudinary stores authenticated media; the Express API checks member access before streaming it. Legacy records try supported Cloudinary delivery types so older uploads can load too.
 - **Create share link** publishes an album to anyone with that URL. Anyone who has already viewed or saved media may keep their own copy.
 - **Create upload link** makes a separate, revocable `/add/...` link. Anyone with it can view the album's photos/videos and add more; notes and account controls remain private. The admin can revoke these links by restricting the album.
