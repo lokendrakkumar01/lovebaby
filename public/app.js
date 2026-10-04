@@ -1,0 +1,406 @@
+const $ = (selector) => document.querySelector(selector);
+const authPanel = $('#auth-panel');
+const dashboard = $('#dashboard');
+const sharedView = $('#shared-view');
+const authForm = $('#auth-form');
+let authMode = 'login';
+let items = [];
+let viewerItems = [];
+let viewerIndex = 0;
+let previousFocus = null;
+const shareToken = location.pathname.match(/^\/s\/([A-Za-z0-9_-]{30,})\/?$/)?.[1] || null;
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { credentials: 'same-origin', ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function setNotice(element, message = '') {
+  element.textContent = message;
+}
+
+function setBusy(element, busy) {
+  element.classList.toggle('busy', busy);
+  element.setAttribute('aria-busy', String(busy));
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const isRegister = mode === 'register';
+  $('#auth-title').textContent = isRegister ? 'A little space of your own' : 'Welcome back';
+  $('#auth-copy').textContent = isRegister ? 'Create an account to start collecting your memories.' : 'Sign in to open your memories.';
+  $('#name-field').classList.toggle('hidden', !isRegister);
+  authForm.elements.name.required = isRegister;
+  authForm.elements.password.autocomplete = isRegister ? 'new-password' : 'current-password';
+  $('#auth-submit').innerHTML = isRegister ? 'Create my space <span>↗</span>' : 'Sign in <span>↗</span>';
+  $('#switch-auth').firstChild.textContent = isRegister ? 'Already have an account? ' : 'New here? ';
+  $('#toggle-auth').textContent = isRegister ? 'Sign in instead' : 'Create a private account';
+  setNotice($('#auth-error'));
+}
+
+function showDashboard(user) {
+  $('#intro').classList.add('hidden');
+  authPanel.classList.add('hidden');
+  sharedView.classList.add('hidden');
+  dashboard.classList.remove('hidden');
+  $('#user-name').textContent = user.name;
+  $('#share-button').textContent = user.hasShareLink ? 'Copy album link' : 'Create share link';
+  $('#revoke-share').classList.toggle('hidden', !user.hasShareLink);
+  $('#share-status').textContent = user.hasShareLink
+    ? 'Anyone with your album link can view these memories.'
+    : 'Only you can see these memories.';
+  loadItems();
+}
+
+function addMemoryDate(container, date) {
+  const time = document.createElement('time');
+  time.className = 'memory-date';
+  time.dateTime = date;
+  const parsed = new Date(date);
+  time.textContent = Number.isNaN(parsed.valueOf()) ? '' : parsed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  container.append(time);
+}
+
+function makeButton(label, className, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener('click', action);
+  return button;
+}
+
+function createCard(item, index, ownerView = false, sourceItems = items) {
+  const card = document.createElement('article');
+  card.className = item.kind === 'note' ? 'memory-card note-card' : 'memory-card';
+
+  if (item.kind === 'note') {
+    const mark = document.createElement('span');
+    mark.className = 'note-mark';
+    mark.textContent = '“';
+    card.append(mark);
+    const message = document.createElement('p');
+    message.className = 'memory-title';
+    message.textContent = item.text;
+    card.append(message);
+  } else {
+    const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
+    media.className = 'media-preview';
+    media.src = item.mediaUrl;
+    media.alt = item.caption || 'Saved memory';
+    if (item.kind === 'video') {
+      media.preload = 'metadata';
+      media.playsInline = true;
+    } else {
+      media.loading = 'lazy';
+      media.decoding = 'async';
+    }
+    media.addEventListener('click', () => openViewer(sourceItems.filter((candidate) => candidate.kind !== 'note'), sourceItems.filter((candidate) => candidate.kind !== 'note').findIndex((candidate) => candidate.id === item.id)));
+    card.append(media);
+    if (item.caption) {
+      const caption = document.createElement('p');
+      caption.className = 'memory-title';
+      caption.textContent = item.caption;
+      card.append(caption);
+    }
+  }
+
+  const details = document.createElement('div');
+  if (item.kind === 'note') details.className = 'memory-card-body';
+  addMemoryDate(details, item.createdAt);
+  if (ownerView) {
+    const actions = document.createElement('div');
+    actions.className = 'memory-actions';
+    const remove = makeButton('Delete', 'delete', () => deleteItem(item.id));
+    remove.setAttribute('aria-label', 'Delete this memory');
+    actions.append(remove);
+    details.append(actions);
+  }
+  card.append(details);
+  card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
+  return card;
+}
+
+function renderItems(target, list, ownerView = false) {
+  target.replaceChildren();
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = ownerView
+      ? 'Your memory box is waiting for its first note or photo.'
+      : 'There are no memories in this album yet.';
+    target.append(empty);
+    return;
+  }
+  list.forEach((item, index) => target.append(createCard(item, index, ownerView, list)));
+}
+
+async function loadItems() {
+  try {
+    const data = await api('/api/items');
+    items = data.items;
+    $('#memory-count').textContent = `${items.length} ${items.length === 1 ? 'memory' : 'memories'}`;
+    renderItems($('#memories-grid'), items, true);
+    setNotice($('#dashboard-error'));
+  } catch (error) {
+    if (error.status === 401) {
+      dashboard.classList.add('hidden');
+      authPanel.classList.remove('hidden');
+      setNotice($('#auth-error'), 'Your session expired. Please sign in again.');
+    } else setNotice($('#dashboard-error'), error.message);
+  }
+}
+
+async function deleteItem(id) {
+  if (!window.confirm('Remove this memory from your album?')) return;
+  try {
+    await api(`/api/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadItems();
+  } catch (error) {
+    setNotice($('#dashboard-error'), error.message);
+  }
+}
+
+function openViewer(list, index) {
+  if (!list.length || index < 0) return;
+  viewerItems = list;
+  viewerIndex = index;
+  previousFocus = document.activeElement;
+  renderViewer();
+  $('#lightbox').classList.remove('hidden');
+  $('#lb-close').focus();
+  document.body.style.overflow = 'hidden';
+}
+
+function renderViewer() {
+  const item = viewerItems[viewerIndex];
+  const content = $('#lb-content');
+  content.replaceChildren();
+  const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
+  media.src = item.mediaUrl;
+  media.alt = item.caption || 'Memory';
+  if (item.kind === 'video') {
+    media.controls = true;
+    media.autoplay = true;
+    media.playsInline = true;
+    media.preload = 'metadata';
+  }
+  content.append(media);
+  if (item.caption) {
+    const caption = document.createElement('div');
+    caption.className = 'lb-caption';
+    caption.textContent = item.caption;
+    content.append(caption);
+  }
+  $('#lb-count').textContent = `${String(viewerIndex + 1).padStart(2, '0')}   /   ${String(viewerItems.length).padStart(2, '0')}`;
+}
+
+function closeViewer() {
+  $('#lb-content').replaceChildren();
+  $('#lightbox').classList.add('hidden');
+  document.body.style.overflow = '';
+  previousFocus?.focus?.();
+}
+
+function moveViewer(delta) {
+  if (!viewerItems.length) return;
+  viewerIndex = (viewerIndex + delta + viewerItems.length) % viewerItems.length;
+  renderViewer();
+}
+
+async function loadSharedAlbum() {
+  $('#intro').classList.add('hidden');
+  authPanel.classList.add('hidden');
+  dashboard.classList.add('hidden');
+  sharedView.classList.remove('hidden');
+  try {
+    const data = await api(`/api/shared/${encodeURIComponent(shareToken)}`);
+    $('#shared-owner').textContent = `${data.ownerName}’s memories`;
+    renderItems($('#shared-grid'), data.items, false);
+  } catch (error) {
+    setNotice($('#shared-error'), error.message);
+  }
+}
+
+$('#toggle-auth').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
+authForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setNotice($('#auth-error'));
+  const data = Object.fromEntries(new FormData(authForm));
+  setBusy(authForm, true);
+  try {
+    const result = await api(`/api/auth/${authMode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    authForm.reset();
+    showDashboard(result.user);
+  } catch (error) {
+    setNotice($('#auth-error'), error.message);
+  } finally {
+    setBusy(authForm, false);
+  }
+});
+
+$('#sign-out').addEventListener('click', async () => {
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  dashboard.classList.add('hidden');
+  authPanel.classList.remove('hidden');
+  setAuthMode('login');
+  setNotice($('#auth-error'), 'You are signed out. Your album is saved privately.');
+});
+
+$('#message-text').addEventListener('input', (event) => {
+  $('#char-count').textContent = `${event.currentTarget.value.length} / 3000`;
+});
+$('#message-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  setBusy(form, true);
+  button.textContent = 'Saving…';
+  try {
+    await api('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: form.elements.text.value }) });
+    form.reset();
+    $('#char-count').textContent = '0 / 3000';
+    await loadItems();
+  } catch (error) {
+    setNotice($('#dashboard-error'), error.message);
+  } finally {
+    setBusy(form, false);
+    button.innerHTML = 'Save note <b>↗</b>';
+  }
+});
+
+const fileInput = $('#media-file');
+const dropzone = $('.dropzone');
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  $('#file-label').textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'Choose a photo or video';
+});
+for (const eventName of ['dragenter', 'dragover']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.add('dragover'); });
+for (const eventName of ['dragleave', 'drop']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.remove('dragover'); });
+dropzone.addEventListener('drop', (event) => {
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  fileInput.files = transfer.files;
+  fileInput.dispatchEvent(new Event('change'));
+});
+
+$('#upload-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const file = fileInput.files[0];
+  if (!file) return;
+  if (file.size > 100 * 1024 * 1024) {
+    setNotice($('#dashboard-error'), 'Choose a photo or video smaller than 100 MB.');
+    return;
+  }
+  const submit = form.querySelector('button[type="submit"]');
+  const payload = new FormData(form);
+  setBusy(form, true);
+  submit.textContent = 'Uploading…';
+  $('#upload-progress').textContent = 'Saving privately to Cloudinary…';
+  setNotice($('#dashboard-error'));
+  try {
+    await api('/api/media', { method: 'POST', body: payload });
+    form.reset();
+    $('#file-label').textContent = 'Choose a photo or video';
+    $('#upload-progress').textContent = 'Private to your album';
+    await loadItems();
+  } catch (error) {
+    setNotice($('#dashboard-error'), error.message);
+    $('#upload-progress').textContent = 'Upload did not finish.';
+  } finally {
+    setBusy(form, false);
+    submit.innerHTML = 'Upload memory <b>↗</b>';
+  }
+});
+
+$('#share-button').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.textContent = 'Making link…';
+  button.disabled = true;
+  try {
+    const data = await api('/api/share', { method: 'POST' });
+    const linkField = $('#share-url');
+    linkField.value = data.url;
+    linkField.classList.remove('hidden');
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(data.url);
+      copied = true;
+    } catch { /* The read-only link stays visible for manual copying. */ }
+    $('#share-status').textContent = copied
+      ? 'Album link copied. Anyone with it can view your memories.'
+      : 'Copy this link to share your album with someone.';
+    button.textContent = 'Copy album link';
+    $('#revoke-share').classList.remove('hidden');
+    if (!copied) {
+      linkField.focus();
+      linkField.select();
+    }
+  } catch (error) {
+    $('#share-status').textContent = error.message;
+    button.textContent = 'Try again';
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#revoke-share').addEventListener('click', async (event) => {
+  if (!window.confirm('Turn off this album link? Anyone who has it will lose access to the album.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/share', { method: 'DELETE' });
+    $('#share-status').textContent = 'Link revoked. Only you can see this album now.';
+    $('#share-button').textContent = 'Create share link';
+    $('#share-url').value = '';
+    $('#share-url').classList.add('hidden');
+    button.classList.add('hidden');
+  } catch (error) {
+    $('#share-status').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#lb-close').addEventListener('click', closeViewer);
+$('#lb-prev').addEventListener('click', () => moveViewer(-1));
+$('#lb-next').addEventListener('click', () => moveViewer(1));
+$('#lightbox').addEventListener('click', (event) => { if (event.target.id === 'lightbox') closeViewer(); });
+document.addEventListener('keydown', (event) => {
+  if ($('#lightbox').classList.contains('hidden')) return;
+  if (event.key === 'Escape') closeViewer();
+  if (event.key === 'ArrowLeft') moveViewer(-1);
+  if (event.key === 'ArrowRight') moveViewer(1);
+});
+let touchStartX = 0;
+$('#lightbox').addEventListener('touchstart', (event) => { touchStartX = event.changedTouches[0].screenX; }, { passive: true });
+$('#lightbox').addEventListener('touchend', (event) => {
+  const delta = event.changedTouches[0].screenX - touchStartX;
+  if (Math.abs(delta) > 55) moveViewer(delta < 0 ? 1 : -1);
+}, { passive: true });
+
+addEventListener('scroll', () => {
+  const scrollable = document.documentElement.scrollHeight - innerHeight;
+  $('#progress').style.width = `${scrollable > 0 ? scrollY / scrollable * 100 : 0}%`;
+}, { passive: true });
+
+if (shareToken) {
+  loadSharedAlbum();
+} else {
+  api('/api/auth/me').then(({ user }) => showDashboard(user)).catch((error) => {
+    if (error.status !== 401) setNotice($('#auth-error'), error.message);
+  });
+}
