@@ -120,7 +120,11 @@ async function shareMemory(item) {
     const { url } = await api(`/api/items/${encodeURIComponent(item.id)}/share`, { method: 'POST' });
     if (navigator.share) {
       try { await navigator.share({ title: item.caption || 'A memory', text: 'A memory to keep', url }); }
-      catch (error) { if (error.name !== 'AbortError') throw error; }
+      catch (error) {
+        if (error.name === 'AbortError') return;
+        await navigator.clipboard.writeText(url);
+        setNotice($('#dashboard-error'), 'Memory link copied.');
+      }
     } else {
       await navigator.clipboard.writeText(url);
       setNotice($('#dashboard-error'), 'Memory link copied. Anyone with it can view this memory.');
