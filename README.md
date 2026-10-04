@@ -19,6 +19,8 @@ If you prefer not to use a Blueprint, create a **Web Service** connected to the 
 - Accounts are separate. Passwords are hashed; session cookies are HTTP-only and secure in production.
 - Notes, photos, and videos are private to the signed-in owner by default. Cloudinary media is uploaded as authenticated assets and streamed through owner-checked routes.
 - **Create share link** publishes that account's full album to anyone who has the link. **Revoke link** disables that link. Anyone who has already viewed or saved a photo/video may retain their own copy.
+- **Create upload link** makes a separate, revocable `/add/...` link. Anyone who receives it can view the album's photos/videos and add more photos or videos; notes and account controls stay private. Share this link only with people you trust.
 - Uploads accept supported image/video files up to 100 MB, with an hourly rate limit. Do not upload media you do not have permission to share.
 
 Local setup: copy `.env.example` to `.env`, replace every placeholder with your rotated credentials, then run `npm install` and `npm start`.
+

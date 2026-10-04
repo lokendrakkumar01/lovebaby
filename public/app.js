@@ -9,6 +9,7 @@ let viewerItems = [];
 let viewerIndex = 0;
 let previousFocus = null;
 const shareToken = location.pathname.match(/^\/s\/([A-Za-z0-9_-]{30,})\/?$/)?.[1] || null;
+const contributorToken = location.pathname.match(/^\/add\/([A-Za-z0-9_-]{30,})\/?$/)?.[1] || null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
@@ -55,6 +56,11 @@ function showDashboard(user) {
   $('#share-status').textContent = user.hasShareLink
     ? 'Anyone with your album link can view these memories.'
     : 'Only you can see these memories.';
+  $('#contributor-button').textContent = user.hasContributorLink ? 'Copy upload link' : 'Create upload link';
+  $('#revoke-contributor').classList.toggle('hidden', !user.hasContributorLink);
+  $('#contributor-status').textContent = user.hasContributorLink
+    ? 'Anyone with this link can view photos and videos, and add more.'
+    : 'Create a private upload link for your girlfriend.';
   loadItems();
 }
 
@@ -90,6 +96,11 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
     message.textContent = item.text;
     card.append(message);
   } else {
+    const mediaFrame = document.createElement('div');
+    mediaFrame.className = `media-frame ${item.kind === 'video' ? 'video-frame' : ''}`;
+    mediaFrame.tabIndex = 0;
+    mediaFrame.setAttribute('role', 'button');
+    mediaFrame.setAttribute('aria-label', `Open ${item.kind === 'video' ? 'video' : 'photo'} memory${item.caption ? `: ${item.caption}` : ''}`);
     const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
     media.className = 'media-preview';
     media.src = item.mediaUrl;
@@ -97,18 +108,42 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
     if (item.kind === 'video') {
       media.preload = 'metadata';
       media.playsInline = true;
+      media.muted = true;
+      const playMark = document.createElement('span');
+      playMark.className = 'video-play-mark';
+      playMark.setAttribute('aria-hidden', 'true');
+      playMark.textContent = '▶';
+      mediaFrame.append(playMark);
     } else {
       media.loading = 'lazy';
       media.decoding = 'async';
     }
-    media.addEventListener('click', () => openViewer(sourceItems.filter((candidate) => candidate.kind !== 'note'), sourceItems.filter((candidate) => candidate.kind !== 'note').findIndex((candidate) => candidate.id === item.id)));
-    card.append(media);
-    if (item.caption) {
-      const caption = document.createElement('p');
-      caption.className = 'memory-title';
-      caption.textContent = item.caption;
-      card.append(caption);
+    mediaFrame.append(media);
+    const openCard = () => {
+      const mediaItems = sourceItems.filter((candidate) => candidate.kind !== 'note');
+      openViewer(mediaItems, mediaItems.findIndex((candidate) => candidate.id === item.id));
+    };
+    mediaFrame.addEventListener('click', openCard);
+    mediaFrame.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCard(); }
+    });
+    card.append(mediaFrame);
+    const body = document.createElement('div');
+    body.className = 'memory-card-body';
+    const caption = document.createElement('p');
+    caption.className = 'memory-title';
+    caption.textContent = item.caption || (item.kind === 'video' ? 'A little video memory' : 'A little photo memory');
+    body.append(caption);
+    addMemoryDate(body, item.createdAt);
+    if (ownerView) {
+      const actions = document.createElement('div');
+      actions.className = 'memory-actions';
+      actions.append(makeButton('Delete', 'delete', () => deleteItem(item.id)));
+      body.append(actions);
     }
+    card.append(body);
+    card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
+    return card;
   }
 
   const details = document.createElement('div');
@@ -228,6 +263,25 @@ async function loadSharedAlbum() {
   }
 }
 
+async function loadContributorAlbum() {
+  $('#intro').classList.add('hidden');
+  authPanel.classList.add('hidden');
+  dashboard.classList.add('hidden');
+  sharedView.classList.remove('hidden');
+  $('#shared-kicker').textContent = 'a little space for our memories';
+  $('#shared-copy').textContent = 'Add a photo or video from your phone. It will appear in the album right away.';
+  $('#contributor-form').classList.remove('hidden');
+  try {
+    const data = await api(`/api/contribute/${encodeURIComponent(contributorToken)}`);
+    $('#shared-owner').textContent = `${data.ownerName}’s memories`;
+    renderItems($('#shared-grid'), data.items, false);
+    setNotice($('#shared-error'));
+  } catch (error) {
+    $('#contributor-form').classList.add('hidden');
+    setNotice($('#shared-error'), error.message);
+  }
+}
+
 $('#toggle-auth').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
 authForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -284,6 +338,91 @@ const dropzone = $('.dropzone');
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   $('#file-label').textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'Choose a photo or video';
+});
+
+$('#contributor-button').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = 'Making link…';
+  try {
+    const { url } = await api('/api/contributor-link', { method: 'POST' });
+    const field = $('#contributor-url');
+    field.value = url;
+    field.classList.remove('hidden');
+    let copied = false;
+    try { await navigator.clipboard.writeText(url); copied = true; } catch { /* Leave link visible to copy manually. */ }
+    $('#contributor-status').textContent = copied
+      ? 'Upload link copied. Anyone with it can view and add photos/videos.'
+      : 'Copy this link and send it to your girlfriend.';
+    $('#revoke-contributor').classList.remove('hidden');
+    button.textContent = 'Copy upload link';
+    if (!copied) { field.focus(); field.select(); }
+  } catch (error) {
+    $('#contributor-status').textContent = error.message;
+    button.textContent = 'Try again';
+  } finally { button.disabled = false; }
+});
+
+$('#revoke-contributor').addEventListener('click', async (event) => {
+  if (!window.confirm('Revoke this upload link? It will stop working for everyone.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/contributor-link', { method: 'DELETE' });
+    $('#contributor-status').textContent = 'Upload link revoked.';
+    $('#contributor-button').textContent = 'Create upload link';
+    $('#contributor-url').value = '';
+    $('#contributor-url').classList.add('hidden');
+    button.classList.add('hidden');
+  } catch (error) { $('#contributor-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+
+const contributorFile = $('#contributor-file');
+contributorFile.addEventListener('change', () => {
+  const files = Array.from(contributorFile.files);
+  $('#contributor-file-label').textContent = files.length === 1
+    ? `${files[0].name} · ${(files[0].size / 1024 / 1024).toFixed(1)} MB`
+    : files.length ? `${files.length} photos or videos selected` : 'Choose photos or videos';
+});
+$('#contributor-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const files = Array.from(contributorFile.files);
+  if (!files.length) return;
+  if (files.some((file) => file.size > 100 * 1024 * 1024)) {
+    setNotice($('#shared-error'), 'Each photo or video must be smaller than 100 MB.');
+    return;
+  }
+  const button = $('#contributor-submit');
+  button.disabled = true;
+  const hint = form.querySelector('.contributor-hint');
+  const defaultHint = 'This private link lets you add photos and videos to the album.';
+  button.textContent = 'Adding memories…';
+  setNotice($('#shared-error'));
+  let uploadedCount = 0;
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      hint.textContent = `Uploading ${index + 1} of ${files.length}…`;
+      const payload = new FormData();
+      payload.append('file', files[index]);
+      payload.append('caption', form.elements.caption.value);
+      await api(`/api/contribute/${encodeURIComponent(contributorToken)}/media`, { method: 'POST', body: payload });
+      uploadedCount += 1;
+    }
+    form.reset();
+    $('#contributor-file-label').textContent = 'Choose photos or videos';
+    await loadContributorAlbum();
+    $('#shared-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    if (uploadedCount) {
+      form.reset();
+      $('#contributor-file-label').textContent = 'Choose photos or videos';
+      await loadContributorAlbum();
+      setNotice($('#shared-error'), `${uploadedCount} ${uploadedCount === 1 ? 'file was' : 'files were'} added. Select any remaining files again. ${error.message}`);
+    } else setNotice($('#shared-error'), error.message);
+  }
+  finally { hint.textContent = defaultHint; button.disabled = false; button.innerHTML = 'Add to our memories <span>♡</span>'; }
 });
 for (const eventName of ['dragenter', 'dragover']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.add('dragover'); });
 for (const eventName of ['dragleave', 'drop']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.remove('dragover'); });
@@ -397,10 +536,13 @@ addEventListener('scroll', () => {
   $('#progress').style.width = `${scrollable > 0 ? scrollY / scrollable * 100 : 0}%`;
 }, { passive: true });
 
-if (shareToken) {
+if (contributorToken) {
+  loadContributorAlbum();
+} else if (shareToken) {
   loadSharedAlbum();
 } else {
   api('/api/auth/me').then(({ user }) => showDashboard(user)).catch((error) => {
     if (error.status !== 401) setNotice($('#auth-error'), error.message);
   });
 }
+

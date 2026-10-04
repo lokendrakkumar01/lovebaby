@@ -35,6 +35,7 @@ const users = db.collection('users');
 const entries = db.collection('entries');
 await users.createIndex({ email: 1 }, { unique: true });
 await users.createIndex({ shareToken: 1 }, { unique: true, sparse: true });
+await users.createIndex({ contributorToken: 1 }, { unique: true, sparse: true });
 await entries.createIndex({ ownerId: 1, createdAt: -1 });
 await entries.createIndex({ shareToken: 1, createdAt: -1 });
 
@@ -109,7 +110,7 @@ async function requireUser(req, res, next) {
 }
 
 function cleanUser(user) {
-  return { id: user._id.toString(), name: user.name, email: user.email, hasShareLink: Boolean(user.shareToken) };
+  return { id: user._id.toString(), name: user.name, email: user.email, hasShareLink: Boolean(user.shareToken), hasContributorLink: Boolean(user.contributorToken) };
 }
 
 function mediaUrl(entry, token = null) {
@@ -214,12 +215,18 @@ const memoryUpload = multer({
 });
 const knownFileTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'video/mp4', 'video/webm', 'video/quicktime']);
 
-app.post('/api/media', requireUser, uploadLimiter, memoryUpload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Choose a photo or video to upload.' });
+async function saveMedia(ownerId, req) {
+  if (!req.file) {
+    const error = new Error('Choose a photo or video to upload.');
+    error.statusCode = 400;
+    throw error;
+  }
   const detected = await fileTypeFromFile(req.file.path);
   if (!detected || !knownFileTypes.has(detected.mime)) {
     await rm(req.file.path, { force: true });
-    return res.status(415).json({ error: 'That file type is not supported. Choose a photo or video.' });
+    const error = new Error('That file type is not supported. Choose a photo or video.');
+    error.statusCode = 415;
+    throw error;
   }
   const resourceType = detected.mime.startsWith('video/') ? 'video' : 'image';
   const caption = String(req.body?.caption || '').trim().slice(0, 180);
@@ -238,7 +245,7 @@ app.post('/api/media', requireUser, uploadLimiter, memoryUpload.single('file'), 
     await rm(req.file.path, { force: true });
   }
   const entry = {
-    ownerId: req.user._id,
+    ownerId,
     kind: resourceType,
     caption,
     publicId: uploaded.public_id,
@@ -255,7 +262,43 @@ app.post('/api/media', requireUser, uploadLimiter, memoryUpload.single('file'), 
     await cloudinary.uploader.destroy(uploaded.public_id, { resource_type: resourceType, type: 'authenticated' }).catch(() => {});
     throw error;
   }
+  return entry;
+}
+
+app.post('/api/media', requireUser, uploadLimiter, memoryUpload.single('file'), async (req, res) => {
+  const entry = await saveMedia(req.user._id, req);
   res.status(201).json({ item: cleanEntry(entry) });
+});
+
+app.post('/api/contributor-link', requireUser, async (req, res) => {
+  const contributorToken = req.user.contributorToken || crypto.randomBytes(32).toString('base64url');
+  await users.updateOne({ _id: req.user._id }, { $set: { contributorToken } });
+  res.json({ url: `${req.protocol}://${req.get('host')}/add/${contributorToken}` });
+});
+
+app.delete('/api/contributor-link', requireUser, async (req, res) => {
+  await users.updateOne({ _id: req.user._id }, { $unset: { contributorToken: '' } });
+  res.json({ ok: true });
+});
+
+app.get('/api/contribute/:token', async (req, res) => {
+  const owner = await users.findOne({ contributorToken: req.params.token }, { projection: { name: 1, _id: 1 } });
+  if (!owner) return res.status(404).json({ error: 'This upload link is no longer available.' });
+  const docs = await entries.find({ ownerId: owner._id, kind: { $in: ['image', 'video'] } }).sort({ createdAt: -1 }).limit(300).toArray();
+  res.set('Cache-Control', 'no-store');
+  res.json({ ownerName: owner.name, items: docs.map((entry) => cleanEntry(entry, req.params.token)) });
+});
+
+async function requireContributor(req, res, next) {
+  const owner = await users.findOne({ contributorToken: req.params.token }, { projection: { _id: 1 } });
+  if (!owner) return res.status(404).json({ error: 'This upload link is no longer available.' });
+  req.contributorOwner = owner;
+  next();
+}
+
+app.post('/api/contribute/:token/media', uploadLimiter, requireContributor, memoryUpload.single('file'), async (req, res) => {
+  const entry = await saveMedia(req.contributorOwner._id, req);
+  res.status(201).json({ item: cleanEntry(entry, req.params.token) });
 });
 
 app.delete('/api/items/:id', requireUser, async (req, res) => {
@@ -292,7 +335,7 @@ app.get('/api/media/:id', requireUser, async (req, res) => {
 
 app.get('/api/shared/:token/media/:id', async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
-  const owner = await users.findOne({ shareToken: req.params.token }, { projection: { _id: 1 } });
+  const owner = await users.findOne({ $or: [{ shareToken: req.params.token }, { contributorToken: req.params.token }] }, { projection: { _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'This album link is no longer available.' });
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: owner._id, kind: { $in: ['image', 'video'] } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
@@ -320,13 +363,14 @@ app.get('/api/shared/:token', async (req, res) => {
 
 app.use('/assets', (_req, res) => res.sendStatus(404));
 app.use(express.static('public', { index: 'index.html', maxAge: isProduction ? '1h' : 0, etag: true }));
-app.get(['/s/:token', '/'], (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
+app.get(['/s/:token', '/add/:token', '/'], (_req, res) => res.sendFile(fileURLToPath(new URL('./public/index.html', import.meta.url))));
 
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
     const message = error.code === 'LIMIT_FILE_SIZE' ? 'Photos and videos can be up to 100 MB.' : 'The upload form could not be processed.';
     return res.status(400).json({ error: message });
   }
+  if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
   console.error('Request failed:', error?.message || 'unknown error');
   if (res.headersSent) return;
   res.status(500).json({ error: 'Something went wrong. Please try again.' });
@@ -341,3 +385,4 @@ async function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
