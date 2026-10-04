@@ -565,6 +565,36 @@ app.get('/api/admin/background', requireAdmin, async (_req, res) => {
   res.json({ memoryId: settings?.backgroundMemoryId || null });
 });
 
+app.get('/api/admin/story', requireAdmin, async (req, res) => {
+  const settings = await users.findOne({ _id: systemGalleryId }, { projection: { storyConfig: 1, storyToken: 1 } });
+  const url = settings?.storyToken ? `${req.protocol}://${req.get('host')}/story/${settings.storyToken}` : null;
+  res.json({ story: settings?.storyConfig || { title: 'Love My Jaan', subtitle: 'Every photo, video and message, together.', message: '', memoryIds: null }, url });
+});
+
+app.put('/api/admin/story', requireAdmin, async (req, res) => {
+  const title = String(req.body?.title || '').trim();
+  const subtitle = String(req.body?.subtitle || '').trim();
+  const message = String(req.body?.message || '').trim();
+  const memoryIds = req.body?.memoryIds;
+  if (!title || title.length > 100 || subtitle.length > 180 || message.length > 1000) {
+    return res.status(400).json({ error: 'Add a title and keep the title, subtitle and message within their character limits.' });
+  }
+  if (memoryIds !== null && (!Array.isArray(memoryIds) || memoryIds.length > 2000 || memoryIds.some((id) => !ObjectId.isValid(id)))) {
+    return res.status(400).json({ error: 'Choose a valid set of story memories.' });
+  }
+  const ids = memoryIds === null ? null : [...new Set(memoryIds)];
+  if (ids?.length) {
+    const selected = await entries.find({ _id: { $in: ids.map((id) => new ObjectId(id)) } }, { projection: { _id: 1, ownerId: 1 } }).toArray();
+    const owners = await users.find({ _id: { $in: selected.map((entry) => entry.ownerId) }, suspended: { $ne: true }, $or: [{ isSystemGallery: true }, { visibility: 'all' }, { visibility: { $exists: false } }] }, { projection: { _id: 1 } }).toArray();
+    const eligibleOwners = new Set(owners.map((owner) => owner._id.toString()));
+    const eligibleIds = new Set(selected.filter((entry) => eligibleOwners.has(entry.ownerId.toString())).map((entry) => entry._id.toString()));
+    if (eligibleIds.size !== ids.length) return res.status(400).json({ error: 'Some selected memories are unavailable for public stories. Refresh the memories and try again.' });
+  }
+  const storyConfig = { title, subtitle, message, memoryIds: ids, updatedAt: new Date() };
+  await users.updateOne({ _id: systemGalleryId }, { $set: { storyConfig } });
+  res.json({ ok: true, story: storyConfig });
+});
+
 app.put('/api/admin/background', requireAdmin, async (req, res) => {
   const memoryId = String(req.body?.memoryId || '');
   if (!ObjectId.isValid(memoryId)) return res.status(400).json({ error: 'Choose a photo or video memory.' });
@@ -580,13 +610,15 @@ app.delete('/api/admin/background', requireAdmin, async (_req, res) => {
 });
 
 app.get('/api/admin/memories', requireAdmin, async (_req, res) => {
-  const owners = await users.find({}, { projection: { name: 1 } }).toArray();
+  const owners = await users.find({}, { projection: { name: 1, visibility: 1, suspended: 1, isSystemGallery: 1 } }).toArray();
   const names = new Map(owners.map((owner) => [owner._id.toString(), owner.name]));
+  const eligible = new Set(owners.filter((owner) => !owner.suspended && (owner.isSystemGallery || !owner.visibility || owner.visibility === 'all')).map((owner) => owner._id.toString()));
   const docs = await entries.find({}).sort({ createdAt: -1 }).toArray();
   res.json({ items: docs.map((entry) => ({
     ...cleanEntry(entry),
     mediaUrl: entry.publicId ? `/api/admin/media/${entry._id}` : null,
-    ownerName: names.get(entry.ownerId.toString()) || 'Deleted account'
+    ownerName: names.get(entry.ownerId.toString()) || 'Deleted account',
+    storyEligible: eligible.has(entry.ownerId.toString())
   })) });
 });
 
@@ -598,10 +630,12 @@ app.post('/api/admin/media', requireAdmin, uploadLimiter, memoryUpload.single('f
 app.post('/api/admin/story-link', requireAdmin, async (req, res) => {
   let { storyToken } = await users.findOne({ _id: systemGalleryId }, { projection: { storyToken: 1 } });
   if (!storyToken) {
-    storyToken = crypto.randomBytes(32).toString('base64url');
-    await users.updateOne({ _id: systemGalleryId }, { $set: { storyToken } });
+    const candidate = crypto.randomBytes(32).toString('base64url');
+    const claim = await users.updateOne({ _id: systemGalleryId, storyToken: { $exists: false } }, { $set: { storyToken: candidate } });
+    storyToken = claim.modifiedCount ? candidate : (await users.findOne({ _id: systemGalleryId }, { projection: { storyToken: 1 } }))?.storyToken;
   }
-  res.json({ url: `${req.protocol}://${req.get('host')}/story/${storyToken}` });
+  if (!storyToken) return res.status(503).json({ error: 'The story link could not be prepared. Please try again.' });
+  res.json({ url: new URL(`/story/${storyToken}`, `${req.protocol}://${req.get('host')}`).href });
 });
 
 app.delete('/api/admin/story-link', requireAdmin, async (_req, res) => {
@@ -610,13 +644,19 @@ app.delete('/api/admin/story-link', requireAdmin, async (_req, res) => {
 });
 
 app.get('/api/story/:token', async (req, res) => {
-  const gallery = await users.findOne({ _id: systemGalleryId, storyToken: req.params.token }, { projection: { _id: 1 } });
+  const gallery = await users.findOne({ _id: systemGalleryId, storyToken: req.params.token }, { projection: { _id: 1, storyConfig: 1 } });
   if (!gallery) return res.status(404).json({ error: 'This story link is no longer available.' });
   const owners = await users.find({ suspended: { $ne: true }, $or: [{ isSystemGallery: true }, { visibility: 'all' }, { visibility: { $exists: false } }] }, { projection: { _id: 1, name: 1 } }).toArray();
   const ownerNames = new Map(owners.map((owner) => [owner._id.toString(), owner.name]));
-  const docs = await entries.find({ ownerId: { $in: owners.map((owner) => owner._id) } }).sort({ createdAt: -1 }).toArray();
+  const storyConfig = gallery.storyConfig || { title: 'Love My Jaan', subtitle: 'Every photo, video and message, together.', message: '', memoryIds: null };
+  const query = { ownerId: { $in: owners.map((owner) => owner._id) } };
+  if (Array.isArray(storyConfig.memoryIds)) {
+    const selectedIds = storyConfig.memoryIds.filter(ObjectId.isValid).map((id) => new ObjectId(id));
+    query._id = { $in: selectedIds };
+  }
+  const docs = await entries.find(query).sort({ createdAt: -1 }).toArray();
   res.set('Cache-Control', 'no-store');
-  res.json({ title: 'Our little world', items: docs.map((entry) => ({
+  res.json({ story: { title: storyConfig.title, subtitle: storyConfig.subtitle, message: storyConfig.message }, items: docs.map((entry) => ({
     ...cleanEntry(entry),
     mediaUrl: entry.publicId ? `/api/story/${encodeURIComponent(req.params.token)}/media/${entry._id}` : null,
     ownerName: ownerNames.get(entry.ownerId.toString()) || 'Admin'
@@ -625,8 +665,9 @@ app.get('/api/story/:token', async (req, res) => {
 
 app.get('/api/story/:token/media/:id', async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
-  const gallery = await users.findOne({ _id: systemGalleryId, storyToken: req.params.token }, { projection: { _id: 1 } });
+  const gallery = await users.findOne({ _id: systemGalleryId, storyToken: req.params.token }, { projection: { _id: 1, storyConfig: 1 } });
   if (!gallery) return res.status(404).json({ error: 'This story link is no longer available.' });
+  if (Array.isArray(gallery.storyConfig?.memoryIds) && !gallery.storyConfig.memoryIds.includes(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
   const entry = await entries.findOne({ _id: new ObjectId(req.params.id), kind: { $in: ['image', 'video'] } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   const owner = await users.findOne({ _id: entry.ownerId, suspended: { $ne: true }, $or: [{ isSystemGallery: true }, { visibility: 'all' }, { visibility: { $exists: false } }] }, { projection: { _id: 1 } });

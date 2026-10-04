@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f7f1eb">
   <meta name="robots" content="noindex,nofollow">
   <title>Admin · Little Moments</title>
-  <link rel="stylesheet" href="/admin.css">
-  <script src="/admin.js" defer></script>
+  <link rel="stylesheet" href="/admin.css?v=story-editor-1">
+  <script src="/admin.js?v=story-editor-1" defer></script>
 </head>
 <body>
   <header class="admin-top"><a class="admin-brand" href="/">little moments <span>♡</span></a><span>ADMIN STUDIO</span></header>
@@ -40,8 +40,14 @@
         </form>
         <div class="admin-story-share">
           <div class="admin-tool-copy"><span class="eyebrow">Gift page</span><h2>Share the love story</h2><p>The link opens your animated gift page with the shared gallery memories.</p></div>
-          <div class="admin-tool-actions"><button class="quiet" id="create-story-link" type="button">Create story link</button><button class="quiet hidden" id="revoke-story-link" type="button">Revoke link</button></div>
+          <label class="story-field">Story title<input id="story-title" maxlength="100" value="Love My Jaan"></label>
+          <label class="story-field">Gallery subtitle<input id="story-subtitle" maxlength="180" value="Every photo, video and message, together."></label>
+          <label class="story-field">Personal message<textarea id="story-message" maxlength="1000" rows="3" placeholder="Write a little note for the person opening this story…"></textarea></label>
+          <div class="admin-story-memory-help">Choose the memories to include below in All memories. Restricted or suspended albums cannot be added to a public story.</div>
+          <div class="admin-tool-actions"><button class="quiet" id="save-story" type="button">Save story</button><button class="primary" id="create-story-link" type="button">Save & create link ↗</button><button class="quiet hidden" id="revoke-story-link" type="button">Revoke</button></div>
           <input id="story-link-url" class="story-link-url hidden" type="url" readonly aria-label="Animated story share link">
+          <div class="admin-tool-actions hidden" id="story-link-actions"><button class="quiet" id="copy-story-link" type="button">Copy link</button><a class="quiet story-open-link" id="open-story-link" href="#" target="_blank" rel="noopener">Open story ↗</a></div>
+          <small class="admin-share-note" id="story-link-status" role="status" aria-live="polite"></small>
           <small class="admin-share-note">Anyone with this link can see memories from active albums set to “All signed-in members”.</small>
         </div>
       </section>
@@ -49,7 +55,7 @@
       <div class="admin-notice" id="admin-notice" role="status"></div>
       <section id="users-view" class="admin-view"></section>
       <section id="memories-view" class="admin-view hidden">
-        <div class="memory-tools"><div><h2>All memories</h2><p>Photos, videos and notes from every member. Choose a photo or video for the app background.</p></div><div class="memory-tool-controls"><button class="quiet hidden" id="clear-background" type="button">Clear app background</button><input id="memory-search" type="search" placeholder="Search captions or members" aria-label="Search all memories"></div></div>
+        <div class="memory-tools"><div><h2>All memories</h2><p>Photos, videos and notes from every member. Choose memories for the story or a photo/video for the app background.</p></div><div class="memory-tool-controls"><button class="quiet hidden" id="clear-background" type="button">Clear app background</button><input id="memory-search" type="search" placeholder="Search captions or members" aria-label="Search all memories"></div></div>
         <div class="admin-memory-grid" id="admin-memory-grid"></div>
       </section>
     </section>

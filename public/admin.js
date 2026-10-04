@@ -6,6 +6,8 @@ const adminUploadForm = $('#admin-upload');
 let members = [];
 let memories = [];
 let backgroundId = null;
+let storyMemoryIds = null;
+let storySavedUrl = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
@@ -181,6 +183,22 @@ function renderMemories() {
     caption.className = 'admin-memory-caption';
     caption.textContent = item.kind === 'note' ? item.text : (item.caption || (item.kind === 'video' ? 'Video memory' : 'Photo memory'));
     body.append(caption);
+    const storyChoice = document.createElement('label');
+    storyChoice.className = 'story-memory-choice';
+    const storyCheckbox = document.createElement('input');
+    storyCheckbox.type = 'checkbox';
+    storyCheckbox.checked = item.storyEligible && (storyMemoryIds === null || storyMemoryIds.includes(item.id));
+    storyCheckbox.disabled = !item.storyEligible && !storyCheckbox.checked;
+    storyCheckbox.setAttribute('aria-label', `Include ${item.caption || item.text || 'memory'} in the love story`);
+    storyCheckbox.addEventListener('change', () => {
+      if (storyMemoryIds === null) storyMemoryIds = memories.filter((memory) => memory.storyEligible).map((memory) => memory.id);
+      storyMemoryIds = storyCheckbox.checked
+        ? [...new Set([...storyMemoryIds, item.id])]
+        : storyMemoryIds.filter((id) => id !== item.id);
+      notice($('#story-link-status'), 'Memory selection changed. Save the story to apply it to the link.');
+    });
+    storyChoice.append(storyCheckbox, document.createTextNode(item.storyEligible ? ' Include in story' : ' Not available in public story'));
+    body.append(storyChoice);
     if (item.createdAt) {
       const date = document.createElement('time');
       date.className = 'admin-memory-date';
@@ -199,6 +217,7 @@ function renderMemories() {
       try {
         await api(`/api/admin/items/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
         memories = memories.filter((candidate) => candidate.id !== item.id);
+        if (Array.isArray(storyMemoryIds)) storyMemoryIds = storyMemoryIds.filter((id) => id !== item.id);
         if (backgroundId === item.id) { backgroundId = null; $('#clear-background').classList.add('hidden'); }
         renderMemories();
         notice($('#admin-notice'), 'Memory deleted.');
@@ -257,11 +276,53 @@ async function loadBackground() {
   if (memories.length) renderMemories();
 }
 
+function showStoryLink(url) {
+  storySavedUrl = url || null;
+  const field = $('#story-link-url');
+  const actions = $('#story-link-actions');
+  field.value = url || '';
+  field.classList.toggle('hidden', !url);
+  actions.classList.toggle('hidden', !url);
+  $('#revoke-story-link').classList.toggle('hidden', !url);
+  $('#open-story-link').href = url || '#';
+}
+
+function storyPayload() {
+  return {
+    title: $('#story-title').value.trim(),
+    subtitle: $('#story-subtitle').value.trim(),
+    message: $('#story-message').value.trim(),
+    memoryIds: storyMemoryIds
+  };
+}
+
+async function saveStory() {
+  const data = await api('/api/admin/story', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(storyPayload())
+  });
+  storyMemoryIds = data.story.memoryIds;
+  renderMemories();
+  return data;
+}
+
+async function loadStory() {
+  const data = await api('/api/admin/story');
+  const story = data.story || {};
+  $('#story-title').value = story.title || 'Love My Jaan';
+  $('#story-subtitle').value = story.subtitle || '';
+  $('#story-message').value = story.message || '';
+  storyMemoryIds = Array.isArray(story.memoryIds) ? story.memoryIds : null;
+  showStoryLink(data.url);
+  renderMemories();
+}
+
 async function openStudio() {
   displayAdmin();
   notice($('#admin-notice'), 'Loading members and memories…');
   try {
-    await Promise.all([loadMembers(), loadMemories(), loadBackground()]);
+    await Promise.all([loadMembers(), loadMemories(), loadBackground(), loadStory()]);
     notice($('#admin-notice'));
   } catch (error) {
     if (error.status === 401) { loginCard.classList.remove('hidden'); adminApp.classList.add('hidden'); }
@@ -345,22 +406,42 @@ adminUploadForm.addEventListener('submit', async (event) => {
 $('#create-story-link').addEventListener('click', async (event) => {
   const button = event.currentTarget;
   button.disabled = true;
-  notice($('#admin-notice'), 'Preparing the animated story link…');
+  notice($('#story-link-status'), 'Saving story and preparing the share link…');
   try {
+    await saveStory();
     const { url } = await api('/api/admin/story-link', { method: 'POST' });
-    const field = $('#story-link-url');
-    field.value = url;
-    field.classList.remove('hidden');
-    $('#revoke-story-link').classList.remove('hidden');
+    showStoryLink(url);
     try {
       await navigator.clipboard.writeText(url);
-      notice($('#admin-notice'), 'Story link created and copied. Anyone with it can open the shared memories page.');
+      notice($('#story-link-status'), 'Story saved. Link created and copied.');
     } catch {
-      field.focus(); field.select();
-      notice($('#admin-notice'), 'Story link created. Copy it from the field below.');
+      notice($('#story-link-status'), 'Story saved. Link is ready below; tap Copy link to share it.');
     }
-  } catch (error) { notice($('#admin-notice'), error.message); }
+  } catch (error) { notice($('#story-link-status'), error.message); }
   finally { button.disabled = false; }
+});
+
+$('#save-story').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  notice($('#story-link-status'), 'Saving story…');
+  try {
+    await saveStory();
+    notice($('#story-link-status'), storySavedUrl ? 'Story updated. Your existing link now shows these changes.' : 'Story saved. Create a link when you are ready to share it.');
+  } catch (error) { notice($('#story-link-status'), error.message); }
+  finally { button.disabled = false; }
+});
+
+$('#copy-story-link').addEventListener('click', async () => {
+  if (!storySavedUrl) return;
+  try {
+    await navigator.clipboard.writeText(storySavedUrl);
+    notice($('#story-link-status'), 'Story link copied.');
+  } catch {
+    const field = $('#story-link-url');
+    field.focus(); field.select();
+    notice($('#story-link-status'), 'Select and copy the story link shown above.');
+  }
 });
 
 $('#revoke-story-link').addEventListener('click', async (event) => {
@@ -369,11 +450,9 @@ $('#revoke-story-link').addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     await api('/api/admin/story-link', { method: 'DELETE' });
-    $('#story-link-url').value = '';
-    $('#story-link-url').classList.add('hidden');
-    button.classList.add('hidden');
-    notice($('#admin-notice'), 'The story link has been revoked.');
-  } catch (error) { notice($('#admin-notice'), error.message); }
+    showStoryLink(null);
+    notice($('#story-link-status'), 'The story link has been revoked. Create a new link to share the story again.');
+  } catch (error) { notice($('#story-link-status'), error.message); }
   finally { button.disabled = false; }
 });
 

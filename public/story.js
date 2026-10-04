@@ -729,7 +729,14 @@ async function loadStoryMemories() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Memories could not be loaded.');
         renderStoryMemories(data.items || []);
-        document.getElementById('storySubtitle').textContent = `${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'} shared with love.`;
+        const story = data.story || {};
+        const title = document.querySelector('.title');
+        if (title && story.title) title.textContent = story.title;
+        const message = document.getElementById('storyMessage');
+        message.textContent = story.message || '';
+        message.hidden = !story.message;
+        const description = story.subtitle || 'Every photo, video and message, together.';
+        document.getElementById('storySubtitle').textContent = `${description} · ${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'}`;
     } catch (error) {
         storyError.textContent = error.message;
     }
