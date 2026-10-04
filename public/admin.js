@@ -1,0 +1,261 @@
+const $ = (selector) => document.querySelector(selector);
+const loginCard = $('#login-card');
+const adminApp = $('#admin-app');
+const loginForm = $('#admin-login');
+let members = [];
+let memories = [];
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { credentials: 'same-origin', ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function notice(element, message = '') { element.textContent = message; }
+
+function displayAdmin() {
+  loginCard.classList.add('hidden');
+  adminApp.classList.remove('hidden');
+}
+
+function addEmpty(target, message) {
+  const empty = document.createElement('div');
+  empty.className = 'admin-empty';
+  empty.textContent = message;
+  target.append(empty);
+}
+
+function renderMembers() {
+  const target = $('#users-view');
+  target.replaceChildren();
+  $('#user-total').textContent = String(members.length);
+  if (!members.length) return addEmpty(target, 'No accounts have signed up yet.');
+  const list = document.createElement('div');
+  list.className = 'member-list';
+  members.forEach((member, index) => {
+    const card = document.createElement('article');
+    card.className = 'member-card';
+    card.style.animationDelay = `${Math.min(index * 35, 280)}ms`;
+
+    const header = document.createElement('div');
+    header.className = 'member-heading';
+    const identity = document.createElement('div');
+    const name = document.createElement('h3');
+    name.textContent = member.name || 'Member';
+    const email = document.createElement('p');
+    email.textContent = member.email;
+    identity.append(name, email);
+    const badge = document.createElement('span');
+    badge.className = `member-badge${member.suspended ? ' suspended' : ''}`;
+    badge.textContent = member.suspended ? 'Disabled' : 'Active';
+    header.append(identity, badge);
+    card.append(header);
+
+    const controls = document.createElement('div');
+    controls.className = 'member-controls';
+    const visibilityLabel = document.createElement('label');
+    visibilityLabel.textContent = 'Who can view this album';
+    const visibility = document.createElement('select');
+    for (const [value, text] of [['all', 'All signed-in members'], ['selected', 'Selected members'], ['private', 'Owner only']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      visibility.append(option);
+    }
+    visibility.value = member.visibility;
+    visibilityLabel.append(visibility);
+
+    const statusLabel = document.createElement('label');
+    statusLabel.textContent = 'Account status';
+    const status = document.createElement('select');
+    for (const [value, text] of [['active', 'Active'], ['disabled', 'Disabled']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      status.append(option);
+    }
+    status.value = member.suspended ? 'disabled' : 'active';
+    statusLabel.append(status);
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'save-access';
+    save.textContent = 'Save access';
+    controls.append(visibilityLabel, statusLabel, save);
+    card.append(controls);
+
+    const recipients = document.createElement('details');
+    recipients.className = 'recipient-list';
+    recipients.open = member.visibility === 'selected';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Choose which members can see this album';
+    const options = document.createElement('div');
+    options.className = 'recipient-options';
+    const eligible = members.filter((candidate) => candidate.id !== member.id && !candidate.suspended);
+    eligible.forEach((candidate) => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = candidate.id;
+      checkbox.checked = member.visibleTo.includes(candidate.id);
+      label.append(checkbox, document.createTextNode(`${candidate.name} · ${candidate.email}`));
+      options.append(label);
+    });
+    if (!eligible.length) {
+      const help = document.createElement('small');
+      help.className = 'member-footnote';
+      help.textContent = 'There are no other active members yet.';
+      options.append(help);
+    }
+    recipients.append(summary, options);
+    card.append(recipients);
+
+    const footnote = document.createElement('div');
+    footnote.className = 'member-footnote';
+    footnote.textContent = 'Members can add to the shared gallery. Disabling an account signs it out and hides its album. Restricted albums lose their public view and contributor links.';
+    card.append(footnote);
+
+    visibility.addEventListener('change', () => { recipients.classList.toggle('hidden', visibility.value !== 'selected'); });
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      save.textContent = 'Saving…';
+      const visibleTo = Array.from(options.querySelectorAll('input:checked')).map((input) => input.value);
+      try {
+        await api(`/api/admin/users/${encodeURIComponent(member.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: visibility.value, visibleTo, suspended: status.value === 'disabled' })
+        });
+        notice($('#admin-notice'), `Access updated for ${member.name}.`);
+        await loadMembers();
+      } catch (error) { notice($('#admin-notice'), error.message); }
+      finally { save.disabled = false; save.textContent = 'Save access'; }
+    });
+    list.append(card);
+  });
+  target.append(list);
+}
+
+function renderMemories() {
+  const target = $('#admin-memory-grid');
+  target.replaceChildren();
+  $('#memory-total').textContent = String(memories.length);
+  const query = $('#memory-search').value.trim().toLowerCase();
+  const filtered = memories.filter((item) => `${item.ownerName} ${item.caption} ${item.text}`.toLowerCase().includes(query));
+  if (!filtered.length) return addEmpty(target, query ? 'No memories match that search.' : 'No memories have been added yet.');
+  filtered.forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'admin-memory';
+    if (item.kind === 'image' && item.mediaUrl) {
+      const media = document.createElement('img');
+      media.className = 'admin-media';
+      media.src = item.mediaUrl;
+      media.alt = item.caption || 'Member photo';
+      media.loading = 'lazy';
+      media.addEventListener('error', () => { media.replaceWith(Object.assign(document.createElement('div'), { className: 'admin-media-error', textContent: 'Media unavailable' })); }, { once: true });
+      card.append(media);
+    } else if (item.kind === 'video' && item.mediaUrl) {
+      const media = document.createElement('video');
+      media.className = 'admin-media';
+      media.src = item.mediaUrl;
+      media.controls = true;
+      media.preload = 'metadata';
+      media.playsInline = true;
+      media.addEventListener('error', () => { media.replaceWith(Object.assign(document.createElement('div'), { className: 'admin-media-error', textContent: 'Media unavailable' })); }, { once: true });
+      card.append(media);
+    }
+    const body = document.createElement('div');
+    body.className = 'admin-memory-body';
+    const owner = document.createElement('div');
+    owner.className = 'admin-memory-owner';
+    owner.textContent = `Added by ${item.ownerName}`;
+    body.append(owner);
+    const caption = document.createElement('p');
+    caption.className = 'admin-memory-caption';
+    caption.textContent = item.kind === 'note' ? item.text : (item.caption || (item.kind === 'video' ? 'Video memory' : 'Photo memory'));
+    body.append(caption);
+    if (item.createdAt) {
+      const date = document.createElement('time');
+      date.className = 'admin-memory-date';
+      date.dateTime = item.createdAt;
+      const parsed = new Date(item.createdAt);
+      date.textContent = Number.isNaN(parsed.valueOf()) ? '' : parsed.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      body.append(date);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'delete-memory';
+    remove.textContent = 'Delete memory';
+    remove.addEventListener('click', async () => {
+      if (!window.confirm('Delete this memory from Cloudinary and the shared gallery?')) return;
+      remove.disabled = true;
+      try {
+        await api(`/api/admin/items/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+        memories = memories.filter((candidate) => candidate.id !== item.id);
+        renderMemories();
+        notice($('#admin-notice'), 'Memory deleted.');
+      } catch (error) { notice($('#admin-notice'), error.message); remove.disabled = false; }
+    });
+    body.append(remove);
+    card.append(body);
+    target.append(card);
+  });
+}
+
+async function loadMembers() {
+  const data = await api('/api/admin/users');
+  members = data.users;
+  renderMembers();
+}
+
+async function loadMemories() {
+  const data = await api('/api/admin/memories');
+  memories = data.items;
+  renderMemories();
+}
+
+async function openStudio() {
+  displayAdmin();
+  notice($('#admin-notice'), 'Loading members and memories…');
+  try {
+    await Promise.all([loadMembers(), loadMemories()]);
+    notice($('#admin-notice'));
+  } catch (error) {
+    if (error.status === 401) { loginCard.classList.remove('hidden'); adminApp.classList.add('hidden'); }
+    notice($('#login-notice'), error.message);
+  }
+}
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = loginForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  button.textContent = 'Signing in…';
+  notice($('#login-notice'));
+  try {
+    const fields = Object.fromEntries(new FormData(loginForm));
+    await api('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    loginForm.reset();
+    await openStudio();
+  } catch (error) { notice($('#login-notice'), error.message); }
+  finally { button.disabled = false; button.innerHTML = 'Sign in <span>↗</span>'; }
+});
+
+$('#admin-logout').addEventListener('click', async () => {
+  await api('/api/admin/logout', { method: 'POST' }).catch(() => {});
+  adminApp.classList.add('hidden');
+  loginCard.classList.remove('hidden');
+  notice($('#login-notice'), 'You are signed out.');
+});
+
+document.querySelectorAll('.admin-tabs button').forEach((button) => button.addEventListener('click', () => {
+  document.querySelectorAll('.admin-tabs button').forEach((tab) => tab.classList.toggle('active', tab === button));
+  document.querySelectorAll('.admin-view').forEach((view) => view.classList.toggle('hidden', view.id !== button.dataset.view));
+}));
+$('#memory-search').addEventListener('input', renderMemories);
+api('/api/admin/session').then(openStudio).catch(() => {});

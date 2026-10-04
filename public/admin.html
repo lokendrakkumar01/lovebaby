@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f1eb">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Admin · Little Moments</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <header class="admin-top"><a class="admin-brand" href="/">little moments <span>♡</span></a><span>ADMIN STUDIO</span></header>
+  <main class="admin-shell">
+    <section class="login-card" id="login-card">
+      <div class="eyebrow">private control room</div>
+      <h1>Admin sign in</h1>
+      <p>Manage member access and review memories.</p>
+      <form id="admin-login" class="admin-form">
+        <label>Email<input name="email" type="email" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">Sign in <span>↗</span></button>
+        <div class="admin-notice" id="login-notice" role="alert"></div>
+      </form>
+      <small class="security-note">Admin access is protected by credentials stored in Render environment settings.</small>
+    </section>
+
+    <section class="admin-app hidden" id="admin-app">
+      <div class="admin-heading">
+        <div><div class="eyebrow">little moments · admin</div><h1>Member studio</h1><p>Choose who can see each album and review the shared gallery.</p></div>
+        <button class="quiet" id="admin-logout" type="button">Sign out</button>
+      </div>
+      <div class="admin-summary"><div><b id="user-total">0</b><span>members</span></div><div><b id="memory-total">0</b><span>memories</span></div><div><b>Private</b><span>admin session</span></div></div>
+      <div class="admin-tabs" role="tablist"><button class="active" data-view="users-view" type="button">Members & access</button><button data-view="memories-view" type="button">All memories</button></div>
+      <div class="admin-notice" id="admin-notice" role="status"></div>
+      <section id="users-view" class="admin-view"></section>
+      <section id="memories-view" class="admin-view hidden">
+        <div class="memory-tools"><div><h2>All memories</h2><p>Photos, videos and notes from every member.</p></div><input id="memory-search" type="search" placeholder="Search captions or members" aria-label="Search all memories"></div>
+        <div class="admin-memory-grid" id="admin-memory-grid"></div>
+      </section>
+    </section>
+  </main>
+  <footer>ADMIN ACCESS · little moments</footer>
+</body>
+</html>

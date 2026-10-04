@@ -1,12 +1,12 @@
 # Little Moments
 
-A private-by-default photo, video, and message album. Express serves the responsive web app and API; MongoDB stores accounts and memory metadata; Cloudinary stores private media.
+A responsive photo, video, and message space. Express serves the app and API; MongoDB stores accounts and memory metadata; Cloudinary stores authenticated media.
 
 ## Deploy on Render
 
 1. **Rotate the credentials you pasted into chat before deploying.** Create a new Cloudinary API secret and change the MongoDB Atlas database user's password. Update the MongoDB connection string with the new password. Do not add credentials to source files or Git.
 2. Push this repository to GitHub. In Render choose **New → Blueprint**, connect the repository, and apply `render.yaml`. This creates a Node web service rather than a static site.
-3. In the Render service's **Environment** page, set `MONGODB_URI`, `CLOUDINARY_API_KEY`, and the new `CLOUDINARY_API_SECRET`. `CLOUDINARY_CLOUD_NAME` is already set in the blueprint. Render creates `SESSION_SECRET` for the service.
+3. In the Render service's **Environment** page, set `MONGODB_URI`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. `CLOUDINARY_CLOUD_NAME` is already set in the blueprint. Render creates `SESSION_SECRET` for the service. Set a unique admin password with at least 20 characters; keep it in Render and do not commit it.
 4. In MongoDB Atlas, allowlist the outbound IP ranges shown for your Render service. Use a dedicated database user with access only to this app's database.
 5. Deploy and open the Render URL. Create an account, then upload a small photo and video to confirm both services are connected.
 
@@ -16,11 +16,11 @@ If you prefer not to use a Blueprint, create a **Web Service** connected to the 
 
 ## How privacy works
 
-- Accounts are separate. Passwords are hashed; session cookies are HTTP-only and secure in production.
-- Notes, photos, and videos are private to the signed-in owner by default. Cloudinary media is uploaded as authenticated assets and streamed through owner-checked routes.
-- **Create share link** publishes that account's full album to anyone who has the link. **Revoke link** disables that link. Anyone who has already viewed or saved a photo/video may retain their own copy.
-- **Create upload link** makes a separate, revocable `/add/...` link. Anyone who receives it can view the album's photos/videos and add more photos or videos; notes and account controls stay private. Share this link only with people you trust.
+- By default, every signed-in member can see each member's memories. New members must acknowledge this when registering. Existing accounts also use this default unless the admin changes access.
+- The admin portal at `/Admin/login` can see every account and memory, suspend accounts, delete memories, and set each album to all members, selected members, or its owner only. Restricted albums lose their public view and contributor links.
+- Users can add notes, photos, and videos. Cloudinary stores authenticated media; the Express API checks member access before streaming it. Legacy records try supported Cloudinary delivery types so older uploads can load too.
+- **Create share link** publishes an album to anyone with that URL. Anyone who has already viewed or saved media may keep their own copy.
+- **Create upload link** makes a separate, revocable `/add/...` link. Anyone with it can view the album's photos/videos and add more; notes and account controls remain private. The admin can revoke these links by restricting the album.
 - Uploads accept supported image/video files up to 100 MB, with an hourly rate limit. Do not upload media you do not have permission to share.
 
 Local setup: copy `.env.example` to `.env`, replace every placeholder with your rotated credentials, then run `npm install` and `npm start`.
-

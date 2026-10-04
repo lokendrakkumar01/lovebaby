@@ -3,6 +3,7 @@ const authPanel = $('#auth-panel');
 const dashboard = $('#dashboard');
 const sharedView = $('#shared-view');
 const authForm = $('#auth-form');
+const adminPath = /^\/admin(?:\/login)?\/?$/i.test(location.pathname);
 let authMode = 'login';
 let items = [];
 let viewerItems = [];
@@ -37,11 +38,13 @@ function setAuthMode(mode) {
   $('#auth-title').textContent = isRegister ? 'A little space of your own' : 'Welcome back';
   $('#auth-copy').textContent = isRegister ? 'Create an account to start collecting your memories.' : 'Sign in to open your memories.';
   $('#name-field').classList.toggle('hidden', !isRegister);
+  $('#shared-consent').classList.toggle('hidden', !isRegister);
+  authForm.elements.sharedConsent.required = isRegister;
   authForm.elements.name.required = isRegister;
   authForm.elements.password.autocomplete = isRegister ? 'new-password' : 'current-password';
   $('#auth-submit').innerHTML = isRegister ? 'Create my space <span>↗</span>' : 'Sign in <span>↗</span>';
   $('#switch-auth').firstChild.textContent = isRegister ? 'Already have an account? ' : 'New here? ';
-  $('#toggle-auth').textContent = isRegister ? 'Sign in instead' : 'Create a private account';
+  $('#toggle-auth').textContent = isRegister ? 'Sign in instead' : 'Create an account';
   setNotice($('#auth-error'));
 }
 
@@ -55,7 +58,7 @@ function showDashboard(user) {
   $('#revoke-share').classList.toggle('hidden', !user.hasShareLink);
   $('#share-status').textContent = user.hasShareLink
     ? 'Anyone with your album link can view these memories.'
-    : 'Only you can see these memories.';
+    : 'All signed-in members can see these memories.';
   $('#contributor-button').textContent = user.hasContributorLink ? 'Copy upload link' : 'Create upload link';
   $('#revoke-contributor').classList.toggle('hidden', !user.hasContributorLink);
   $('#contributor-status').textContent = user.hasContributorLink
@@ -95,6 +98,12 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
     message.className = 'memory-title';
     message.textContent = item.text;
     card.append(message);
+    if (item.ownerName) {
+      const owner = document.createElement('small');
+      owner.className = 'memory-owner';
+      owner.textContent = `Added by ${item.ownerName}`;
+      card.append(owner);
+    }
   } else {
     const mediaFrame = document.createElement('div');
     mediaFrame.className = `media-frame ${item.kind === 'video' ? 'video-frame' : ''}`;
@@ -118,6 +127,13 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
       media.loading = 'lazy';
       media.decoding = 'async';
     }
+    media.addEventListener('error', () => {
+      media.remove();
+      const fallback = document.createElement('div');
+      fallback.className = 'media-error';
+      fallback.textContent = 'This memory is unavailable right now';
+      mediaFrame.prepend(fallback);
+    }, { once: true });
     mediaFrame.append(media);
     const openCard = () => {
       const mediaItems = sourceItems.filter((candidate) => candidate.kind !== 'note');
@@ -134,8 +150,14 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
     caption.className = 'memory-title';
     caption.textContent = item.caption || (item.kind === 'video' ? 'A little video memory' : 'A little photo memory');
     body.append(caption);
+    if (item.ownerName) {
+      const owner = document.createElement('small');
+      owner.className = 'memory-owner';
+      owner.textContent = `Added by ${item.ownerName}`;
+      body.append(owner);
+    }
     addMemoryDate(body, item.createdAt);
-    if (ownerView) {
+    if (ownerView && item.canDelete) {
       const actions = document.createElement('div');
       actions.className = 'memory-actions';
       actions.append(makeButton('Delete', 'delete', () => deleteItem(item.id)));
@@ -149,7 +171,13 @@ function createCard(item, index, ownerView = false, sourceItems = items) {
   const details = document.createElement('div');
   if (item.kind === 'note') details.className = 'memory-card-body';
   addMemoryDate(details, item.createdAt);
-  if (ownerView) {
+  if (item.ownerName) {
+    const owner = document.createElement('small');
+    owner.className = 'memory-owner';
+    owner.textContent = `Added by ${item.ownerName}`;
+    details.prepend(owner);
+  }
+  if (ownerView && item.canDelete) {
     const actions = document.createElement('div');
     actions.className = 'memory-actions';
     const remove = makeButton('Delete', 'delete', () => deleteItem(item.id));
@@ -168,7 +196,7 @@ function renderItems(target, list, ownerView = false) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = ownerView
-      ? 'Your memory box is waiting for its first note or photo.'
+      ? 'No member memories yet. Add the first photo, video or note.'
       : 'There are no memories in this album yet.';
     target.append(empty);
     return;
@@ -287,6 +315,7 @@ authForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   setNotice($('#auth-error'));
   const data = Object.fromEntries(new FormData(authForm));
+  data.sharedConsent = authMode === 'register' && authForm.elements.sharedConsent.checked;
   setBusy(authForm, true);
   try {
     const result = await api(`/api/auth/${authMode}`, {
@@ -308,7 +337,7 @@ $('#sign-out').addEventListener('click', async () => {
   dashboard.classList.add('hidden');
   authPanel.classList.remove('hidden');
   setAuthMode('login');
-  setNotice($('#auth-error'), 'You are signed out. Your album is saved privately.');
+  setNotice($('#auth-error'), 'You are signed out. Sign in to see member memories.');
 });
 
 $('#message-text').addEventListener('input', (event) => {
@@ -448,13 +477,13 @@ $('#upload-form').addEventListener('submit', async (event) => {
   const payload = new FormData(form);
   setBusy(form, true);
   submit.textContent = 'Uploading…';
-  $('#upload-progress').textContent = 'Saving privately to Cloudinary…';
+  $('#upload-progress').textContent = 'Saving to the shared gallery…';
   setNotice($('#dashboard-error'));
   try {
     await api('/api/media', { method: 'POST', body: payload });
     form.reset();
     $('#file-label').textContent = 'Choose a photo or video';
-    $('#upload-progress').textContent = 'Private to your album';
+    $('#upload-progress').textContent = 'Shared with signed-in members';
     await loadItems();
   } catch (error) {
     setNotice($('#dashboard-error'), error.message);
@@ -502,7 +531,7 @@ $('#revoke-share').addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     await api('/api/share', { method: 'DELETE' });
-    $('#share-status').textContent = 'Link revoked. Only you can see this album now.';
+    $('#share-status').textContent = 'Link revoked. Signed-in members can still see memories allowed for this album.';
     $('#share-button').textContent = 'Create share link';
     $('#share-url').value = '';
     $('#share-url').classList.add('hidden');
@@ -536,7 +565,9 @@ addEventListener('scroll', () => {
   $('#progress').style.width = `${scrollable > 0 ? scrollY / scrollable * 100 : 0}%`;
 }, { passive: true });
 
-if (contributorToken) {
+if (adminPath) {
+  location.replace('/Admin/login');
+} else if (contributorToken) {
   loadContributorAlbum();
 } else if (shareToken) {
   loadSharedAlbum();
@@ -545,4 +576,3 @@ if (contributorToken) {
     if (error.status !== 401) setNotice($('#auth-error'), error.message);
   });
 }
-
