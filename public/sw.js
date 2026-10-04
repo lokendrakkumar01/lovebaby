@@ -1,4 +1,4 @@
-const CACHE_NAME = 'little-moments-shell-v2';
+const CACHE_NAME = 'little-moments-shell-v3';
 const APP_SHELL = ['/', '/styles.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -20,7 +20,7 @@ self.addEventListener('fetch', (event) => {
       if (response.ok) await (await caches.open(CACHE_NAME)).put(request, response.clone());
       return response;
     } catch {
-      return (await caches.match(request)) || Response.error();
+      return (await caches.match(request, { ignoreSearch: true })) || Response.error();
     }
   })());
 });

@@ -107,7 +107,7 @@ function addMemoryTools(container, item) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }));
   }
-  if (document.body.dataset.signedIn === 'true') {
+  if (document.body.dataset.signedIn === 'true' || contributorToken) {
     actions.append(makeButton('↗ Share', 'memory-tool-button memory-share-button', () => shareMemory(item)));
   }
   return actions;
@@ -117,20 +117,24 @@ async function shareMemory(item) {
   const button = document.activeElement;
   if (button instanceof HTMLButtonElement) { button.disabled = true; button.textContent = 'Making link…'; }
   try {
-    const { url } = await api(`/api/items/${encodeURIComponent(item.id)}/share`, { method: 'POST' });
+    const sharePath = contributorToken
+      ? `/api/contribute/${encodeURIComponent(contributorToken)}/items/${encodeURIComponent(item.id)}/share`
+      : `/api/items/${encodeURIComponent(item.id)}/share`;
+    const { url } = await api(sharePath, { method: 'POST' });
+    const feedback = contributorToken ? $('#shared-error') : $('#dashboard-error');
     if (navigator.share) {
       try { await navigator.share({ title: item.caption || 'A memory', text: 'A memory to keep', url }); }
       catch (error) {
         if (error.name === 'AbortError') return;
         await navigator.clipboard.writeText(url);
-        setNotice($('#dashboard-error'), 'Memory link copied.');
+        setNotice(feedback, 'Private link to this memory copied.');
       }
     } else {
       await navigator.clipboard.writeText(url);
-      setNotice($('#dashboard-error'), 'Memory link copied. Anyone with it can view this memory.');
+      setNotice(feedback, 'Private link to this memory copied.');
     }
   } catch (error) {
-    setNotice($('#dashboard-error'), error.message || 'Could not copy the link.');
+    setNotice(contributorToken ? $('#shared-error') : $('#dashboard-error'), error.message || 'Could not copy the link.');
   } finally {
     if (button instanceof HTMLButtonElement) { button.disabled = false; button.textContent = '↗ Share'; }
   }

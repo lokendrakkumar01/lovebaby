@@ -11,7 +11,7 @@
 
 <title>My Jaan 💗</title>
 
-<link rel="stylesheet" href="/story.css?v=story-editor-1">
+<link rel="stylesheet" href="/story.css?v=story-media-2">
 </head>
 
 
@@ -243,12 +243,22 @@
 </main>
 <section class="story-gallery" id="memoryWall" aria-labelledby="memoryHeading" hidden>
   <header class="story-gallery-head"><span class="story-gallery-kicker">A COLLECTION OF LITTLE MOMENTS</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p></header>
+  <nav class="story-filters" id="story-filters" aria-label="Filter story memories">
+    <button type="button" data-story-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-story-filter="image" aria-pressed="false">Photos</button>
+    <button type="button" data-story-filter="video" aria-pressed="false">Videos</button>
+    <button type="button" data-story-filter="note" aria-pressed="false">Notes</button>
+  </nav>
   <div class="story-grid" id="story-memories"></div>
   <p class="story-load-error" id="story-error" role="status"></p>
 </section>
+<div class="story-viewer" id="story-viewer" role="dialog" aria-modal="true" aria-label="Memory viewer" hidden>
+  <button class="story-viewer-close" id="story-viewer-close" type="button" aria-label="Close memory">×</button>
+  <div class="story-viewer-content" id="story-viewer-content"></div>
+</div>
 
 
-<script src="/story.js?v=story-editor-1" defer></script>
+<script src="/story.js?v=story-media-2" defer></script>
 
 </body>
 </html>

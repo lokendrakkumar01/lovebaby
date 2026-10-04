@@ -433,6 +433,15 @@ app.post('/api/items/:id/share', requireUser, async (req, res) => {
   res.json({ url: `${req.protocol}://${req.get('host')}/memory/${memoryShareToken}` });
 });
 
+app.post('/api/contribute/:token/items/:id/share', requireContributor, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: req.contributorOwner._id, kind: { $in: ['image', 'video'] } });
+  if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
+  const memoryShareToken = entry.memoryShareToken || crypto.randomBytes(32).toString('base64url');
+  await entries.updateOne({ _id: entry._id }, { $set: { memoryShareToken } });
+  res.json({ url: new URL(`/memory/${memoryShareToken}`, `${req.protocol}://${req.get('host')}`).href });
+});
+
 app.get('/api/memory/:token', async (req, res) => {
   const entry = await entries.findOne({ memoryShareToken: req.params.token });
   if (!entry) return res.status(404).json({ error: 'This memory link is no longer available.' });

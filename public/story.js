@@ -635,6 +635,9 @@ const storyToken = location.pathname.match(/^\/story\/([A-Za-z0-9_-]{30,})\/?$/)
 const memoryWall = document.getElementById('memoryWall');
 const memoryGrid = document.getElementById('story-memories');
 const storyError = document.getElementById('story-error');
+const storyItems = [];
+let activeStoryFilter = 'all';
+let storyViewerFocus = null;
 
 function storyText(tag, className, value) {
     const element = document.createElement(tag);
@@ -643,15 +646,50 @@ function storyText(tag, className, value) {
     return element;
 }
 
+function openStoryViewer(item) {
+    const viewer = document.getElementById('story-viewer');
+    const content = document.getElementById('story-viewer-content');
+    const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
+    media.src = item.mediaUrl;
+    media.alt = item.caption || 'A memory shared with love';
+    if (item.kind === 'video') { media.controls = true; media.playsInline = true; media.preload = 'metadata'; }
+    content.replaceChildren(media);
+    storyViewerFocus = document.activeElement;
+    viewer.hidden = false;
+    document.body.classList.add('story-viewer-open');
+    document.getElementById('story-viewer-close').focus();
+}
+
+function closeStoryViewer() {
+    const viewer = document.getElementById('story-viewer');
+    if (viewer.hidden) return;
+    viewer.hidden = true;
+    document.getElementById('story-viewer-content').replaceChildren();
+    document.body.classList.remove('story-viewer-open');
+    storyViewerFocus?.focus?.();
+}
+
+document.getElementById('story-viewer-close').addEventListener('click', closeStoryViewer);
+document.getElementById('story-viewer').addEventListener('click', (event) => {
+    if (event.target.id === 'story-viewer') closeStoryViewer();
+});
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeStoryViewer();
+});
+
 function renderStoryMemories(items) {
     memoryGrid.replaceChildren();
     if (!items.length) {
-        memoryGrid.append(storyText('p', 'story-load-error', 'The memory gallery is waiting for its first photo, video or note.'));
+        const emptyCopy = storyItems.length
+            ? `There are no ${{ image: 'photos', video: 'videos', note: 'notes' }[activeStoryFilter] || 'memories'} in this story yet.`
+            : 'The memory gallery is waiting for its first photo, video or note.';
+        memoryGrid.append(storyText('p', 'story-load-error', emptyCopy));
         return;
     }
     items.forEach((item, index) => {
         const card = document.createElement('article');
         card.className = `story-memory${item.kind === 'note' ? ' story-note' : ''}`;
+        card.dataset.kind = item.kind;
         card.id = `memory-${item.id}`;
         card.style.animationDelay = `${Math.min(index * 35, 300)}ms`;
         if (item.kind === 'image' || item.kind === 'video') {
@@ -688,6 +726,10 @@ function renderStoryMemories(items) {
         const actions = document.createElement('div');
         actions.className = 'story-memory-actions';
         if (item.mediaUrl) {
+            const view = storyText('button', 'story-memory-action', item.kind === 'video' ? '⛶ View video' : '⛶ View photo');
+            view.type = 'button';
+            view.addEventListener('click', () => openStoryViewer(item));
+            actions.append(view);
             const download = storyText('a', 'story-memory-action', '↓ Download');
             download.href = `${item.mediaUrl}?download=1`;
             download.download = `memory-${item.id}`;
@@ -719,6 +761,28 @@ function renderStoryMemories(items) {
     });
 }
 
+function applyStoryFilter(filter) {
+    activeStoryFilter = filter;
+    const counts = {
+        all: storyItems.length,
+        image: storyItems.filter((item) => item.kind === 'image').length,
+        video: storyItems.filter((item) => item.kind === 'video').length,
+        note: storyItems.filter((item) => item.kind === 'note').length
+    };
+    document.querySelectorAll('[data-story-filter]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.storyFilter === filter));
+        const labels = { all: 'All', image: 'Photos', video: 'Videos', note: 'Notes' };
+        button.textContent = `${labels[button.dataset.storyFilter]} · ${counts[button.dataset.storyFilter]}`;
+    });
+    const visible = storyItems.filter((item) => filter === 'all' || item.kind === filter);
+    renderStoryMemories(visible);
+}
+
+document.getElementById('story-filters').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-story-filter]');
+    if (button) applyStoryFilter(button.dataset.storyFilter);
+});
+
 async function loadStoryMemories() {
     if (!storyToken) {
         storyError.textContent = 'This story link is incomplete.';
@@ -728,10 +792,11 @@ async function loadStoryMemories() {
         const response = await fetch(`/api/story/${encodeURIComponent(storyToken)}`, { cache: 'no-store' });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Memories could not be loaded.');
-        renderStoryMemories(data.items || []);
+        storyItems.splice(0, storyItems.length, ...(data.items || []));
+        applyStoryFilter(activeStoryFilter);
         const story = data.story || {};
         const title = document.querySelector('.title');
-        if (title && story.title) title.textContent = story.title;
+        if (title && story.title) { title.textContent = story.title; document.title = `${story.title} 💗`; }
         const message = document.getElementById('storyMessage');
         message.textContent = story.message || '';
         message.hidden = !story.message;
