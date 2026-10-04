@@ -579,7 +579,7 @@ app.put('/api/admin/story', requireAdmin, async (req, res) => {
   if (!title || title.length > 100 || subtitle.length > 180 || message.length > 1000) {
     return res.status(400).json({ error: 'Add a title and keep the title, subtitle and message within their character limits.' });
   }
-  if (memoryIds !== null && (!Array.isArray(memoryIds) || memoryIds.length > 2000 || memoryIds.some((id) => !ObjectId.isValid(id)))) {
+  if (memoryIds !== null && (!Array.isArray(memoryIds) || memoryIds.length > 500 || memoryIds.some((id) => !ObjectId.isValid(id)))) {
     return res.status(400).json({ error: 'Choose a valid set of story memories.' });
   }
   const ids = memoryIds === null ? null : [...new Set(memoryIds)];
