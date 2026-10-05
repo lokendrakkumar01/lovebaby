@@ -110,7 +110,19 @@ function addMemoryTools(container, item) {
   if (document.body.dataset.signedIn === 'true' || contributorToken) {
     actions.append(makeButton('↗ Share', 'memory-tool-button memory-share-button', () => shareMemory(item)));
   }
+  if (document.body.dataset.signedIn === 'true') {
+    actions.append(makeButton(item.userHidden ? '↶ Restore' : 'Hide', 'memory-tool-button memory-hide-button', () => setMemoryHidden(item, !item.userHidden)));
+  }
   return actions;
+}
+
+async function setMemoryHidden(item, hidden) {
+  try {
+    await api(`/api/items/${encodeURIComponent(item.id)}/hide`, { method: hidden ? 'POST' : 'DELETE' });
+    await loadItems();
+    if (!$('#hidden-items-section').classList.contains('hidden')) await loadHiddenItems();
+    setNotice($('#dashboard-error'), hidden ? 'Memory hidden from your album. You can restore it any time.' : 'Memory restored to your album.');
+  } catch (error) { setNotice($('#dashboard-error'), error.message || 'Could not update this memory.'); }
 }
 
 async function shareMemory(item) {
@@ -282,6 +294,9 @@ async function loadItems() {
     const data = await api('/api/items');
     items = data.items;
     $('#memory-count').textContent = `${items.length} ${items.length === 1 ? 'memory' : 'memories'}`;
+    const hiddenCount = Number(data.hiddenCount) || 0;
+    $('#hidden-memory-count').textContent = String(hiddenCount);
+    $('#hidden-items-toggle').classList.toggle('hidden', hiddenCount === 0 && $('#hidden-items-section').classList.contains('hidden'));
     renderItems($('#memories-grid'), items, true);
     setNotice($('#dashboard-error'));
   } catch (error) {
@@ -292,6 +307,44 @@ async function loadItems() {
     } else setNotice($('#dashboard-error'), error.message);
   }
 }
+
+async function loadHiddenItems() {
+  const grid = $('#hidden-memories-grid');
+  const loading = document.createElement('div');
+  loading.className = 'empty-state';
+  loading.textContent = 'Loading hidden memories…';
+  grid.replaceChildren(loading);
+  try {
+    const data = await api('/api/hidden-items');
+    renderItems(grid, data.items, true);
+    if (!data.items.length) {
+      $('#hidden-items-toggle').classList.add('hidden');
+      $('#hidden-items-section').classList.add('hidden');
+      $('#hidden-items-toggle').setAttribute('aria-expanded', 'false');
+    }
+  } catch (error) {
+    grid.replaceChildren();
+    const message = document.createElement('div');
+    message.className = 'empty-state';
+    message.textContent = error.message || 'Could not load hidden memories.';
+    grid.append(message);
+  }
+}
+
+$('#hidden-items-toggle').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const section = $('#hidden-items-section');
+  const opening = section.classList.contains('hidden');
+  section.classList.toggle('hidden', !opening);
+  button.setAttribute('aria-expanded', String(opening));
+  button.classList.toggle('hidden', !opening && Number($('#hidden-memory-count').textContent) === 0);
+  if (opening) { await loadHiddenItems(); section.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+});
+$('#hidden-items-close').addEventListener('click', () => {
+  $('#hidden-items-section').classList.add('hidden');
+  $('#hidden-items-toggle').setAttribute('aria-expanded', 'false');
+  $('#hidden-items-toggle').focus();
+});
 
 async function deleteItem(id) {
   if (!window.confirm('Remove this memory from your album?')) return;

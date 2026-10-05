@@ -183,6 +183,12 @@ function renderMemories() {
     caption.className = 'admin-memory-caption';
     caption.textContent = item.kind === 'note' ? item.text : (item.caption || (item.kind === 'video' ? 'Video memory' : 'Photo memory'));
     body.append(caption);
+    if (item.adminHidden) {
+      const hiddenNotice = document.createElement('div');
+      hiddenNotice.className = 'admin-hidden-badge';
+      hiddenNotice.textContent = item.adminHiddenReason ? `Hidden from members · ${item.adminHiddenReason}` : 'Hidden from members';
+      body.append(hiddenNotice);
+    }
     const storyChoice = document.createElement('label');
     storyChoice.className = 'story-memory-choice';
     const storyCheckbox = document.createElement('input');
@@ -225,6 +231,26 @@ function renderMemories() {
     });
     const actions = document.createElement('div');
     actions.className = 'admin-memory-actions';
+    const visibility = document.createElement('button');
+    visibility.type = 'button';
+    visibility.className = 'set-background admin-visibility';
+    visibility.textContent = item.adminHidden ? '↗ Restore for members' : 'Hide from members';
+    visibility.addEventListener('click', async () => {
+      const reason = item.adminHidden ? '' : window.prompt('Optional note for admins about why this memory is hidden:', '');
+      if (reason === null) return;
+      visibility.disabled = true;
+      try {
+        const updated = await api(`/api/admin/items/${encodeURIComponent(item.id)}/hide`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hidden: !item.adminHidden, reason })
+        });
+        item.adminHidden = updated.hidden;
+        item.adminHiddenReason = updated.hidden ? reason.trim().slice(0, 300) : '';
+        renderMemories();
+        notice($('#admin-notice'), updated.hidden ? 'Memory hidden from members and public links.' : 'Memory restored for members.');
+      } catch (error) { notice($('#admin-notice'), error.message); visibility.disabled = false; }
+    });
+    actions.append(visibility);
     if (item.mediaUrl) {
       const download = document.createElement('a');
       download.className = 'set-background';

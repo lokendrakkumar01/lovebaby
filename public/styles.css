@@ -75,3 +75,5 @@
 }
 @media(prefers-reduced-motion:reduce){.memory-backdrop{transition:none}}
 .persistent-note{margin:12px 0 0;color:var(--muted);font-size:.58rem;line-height:1.55}
+.memory-head-actions{display:flex;align-items:center;gap:12px}.hidden-toggle{min-height:38px;padding:0 12px}.hidden-items-section{margin-top:32px;padding:18px;border:1px solid var(--line);background:#fbf7f2}.hidden-items-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}.hidden-items-head h3{font:400 1.5rem var(--serif);margin:6px 0 0}.memory-hide-button{margin-left:auto!important}.memory-actions .memory-tool-button{min-height:38px;padding:7px 4px;display:inline-flex;align-items:center}.memory-head-actions .button,.hidden-items-head .button{min-height:42px}
+@media(max-width:620px){.memory-head{align-items:flex-end;gap:8px}.memory-head-actions{gap:7px;flex-wrap:wrap;justify-content:flex-end}.memory-head h3{font-size:1.5rem}.hidden-items-section{padding:13px}.memory-actions{flex-wrap:wrap;gap:7px}.memory-actions .memory-tool-button{min-height:44px;padding:9px 5px}.hidden-items-head .button,.memory-head-actions .button{min-height:44px}}
