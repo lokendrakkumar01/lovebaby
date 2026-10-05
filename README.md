@@ -6,13 +6,14 @@ A responsive photo, video, and message space. Express serves the app and API; Mo
 
 1. **Rotate the credentials you pasted into chat before deploying.** Create a new Cloudinary API secret and change the MongoDB Atlas database user's password. Update the MongoDB connection string with the new password. Do not add credentials to source files or Git.
 2. Push this repository to GitHub. In Render choose **New → Blueprint**, connect the repository, and apply `render.yaml`. This creates a Node web service rather than a static site.
-3. In the Render service's **Environment** page, set `MONGODB_URI`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. `CLOUDINARY_CLOUD_NAME` is already set in the blueprint. Render creates `SESSION_SECRET` for the service. Set a unique admin password with at least 20 characters; keep it in Render and do not commit it.
-4. In MongoDB Atlas, allowlist the outbound IP ranges shown for your Render service. Use a dedicated database user with access only to this app's database.
-5. Deploy and open the Render URL. Create an account, then upload a small photo and video to confirm both services are connected.
+3. In the Render service's **Environment** page, set `MONGODB_URI`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `SPOTIFY_CLIENT_ID`. `CLOUDINARY_CLOUD_NAME` and the Spotify redirect URI are set in the blueprint. Render creates `SESSION_SECRET` for the service. Set a unique admin password with at least 20 characters; keep credentials in Render and do not commit them.
+4. In the Spotify Developer Dashboard, add `https://lovebaby.onrender.com/auth/spotify/callback` to the app's Redirect URIs exactly as written. Copy the Spotify Client ID into Render's `SPOTIFY_CLIENT_ID` environment variable. The app uses Authorization Code with PKCE; no Spotify client secret is needed or stored.
+5. In MongoDB Atlas, allowlist the outbound IP ranges shown for your Render service. Use a dedicated database user with access only to this app's database.
+6. Deploy and open the Render URL. Sign in and choose **Connect Spotify** to authorize your account.
 
 ### Manual Render setup
 
-If you prefer not to use a Blueprint, create a **Web Service** connected to the repo. Set **Build Command** to `npm ci`, **Start Command** to `npm start`, and **Health Check Path** to `/healthz`. Add the environment variables listed in `.env.example` in Render's Environment settings. Do not make this a Static Site: the Express API is required for login, uploads, and sharing.
+If you prefer not to use a Blueprint, create a **Web Service** connected to the repo. Set **Build Command** to `npm ci`, **Start Command** to `npm start`, and **Health Check Path** to `/healthz`. Add the environment variables listed in `.env.example` in Render's Environment settings. Do not make this a Static Site: the Express API is required for login, uploads, sharing and Spotify OAuth.
 
 ## How privacy works
 

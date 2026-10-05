@@ -67,7 +67,58 @@ function showDashboard(user) {
     : 'Create a private upload link for your girlfriend.';
   loadItems();
   loadMemoryBackground();
+  loadSpotifyStatus();
 }
+
+async function loadSpotifyStatus() {
+  const status = $('#spotify-status');
+  try {
+    const data = await api('/api/spotify/status');
+    $('#spotify-connect').classList.toggle('hidden', !data.configured || data.connected);
+    $('#spotify-profile').classList.toggle('hidden', !data.connected);
+    $('#spotify-disconnect').classList.toggle('hidden', !data.connected);
+    status.textContent = data.connected
+      ? `Connected to Spotify${data.displayName ? ` as ${data.displayName}` : ''}.`
+      : (data.configured ? 'Connect your Spotify account to this private space.' : 'Spotify connection is not configured on the server yet.');
+  } catch (error) { status.textContent = error.message || 'Spotify status could not be loaded.'; }
+
+  const params = new URLSearchParams(location.search);
+  const result = params.get('spotify');
+  if (result) {
+    const messages = {
+      connected: 'Spotify connected successfully.',
+      denied: 'Spotify connection was cancelled.',
+      invalid: 'Spotify sign-in expired or could not be verified. Please try again.',
+      error: 'Spotify could not connect. Please try again.'
+    };
+    if (messages[result]) status.textContent = messages[result];
+    params.delete('spotify');
+    const suffix = params.size ? `?${params.toString()}` : '';
+    history.replaceState(null, '', `${location.pathname}${suffix}${location.hash}`);
+  }
+}
+
+$('#spotify-profile').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  $('#spotify-status').textContent = 'Checking your Spotify connection…';
+  try {
+    const profile = await api('/api/spotify/profile');
+    $('#spotify-status').textContent = `Spotify connected${profile.displayName ? ` as ${profile.displayName}` : ''}${profile.product ? ` · ${profile.product} account` : ''}.`;
+  } catch (error) { $('#spotify-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+
+$('#spotify-disconnect').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/spotify/connection', { method: 'DELETE' });
+    await loadSpotifyStatus();
+    $('#spotify-status').textContent = 'Spotify disconnected.';
+  } catch (error) { $('#spotify-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 function addMemoryDate(container, date) {
   const time = document.createElement('time');

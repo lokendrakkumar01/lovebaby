@@ -34,6 +34,7 @@ const db = client.db(process.env.MONGODB_DB || 'little_moments');
 const users = db.collection('users');
 const entries = db.collection('entries');
 const userHiddenMemories = db.collection('user_hidden_memories');
+const spotifyOAuthStates = db.collection('spotify_oauth_states');
 const systemGalleryId = new ObjectId('000000000000000000000001');
 await users.createIndex({ email: 1 }, { unique: true });
 await users.createIndex({ shareToken: 1 }, { unique: true, sparse: true });
@@ -43,6 +44,8 @@ await entries.createIndex({ ownerId: 1, createdAt: -1 });
 await entries.createIndex({ shareToken: 1, createdAt: -1 });
 await userHiddenMemories.createIndex({ userId: 1, memoryId: 1 }, { unique: true });
 await userHiddenMemories.createIndex({ userId: 1, hiddenAt: -1 });
+await spotifyOAuthStates.createIndex({ stateHash: 1 }, { unique: true });
+await spotifyOAuthStates.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 await users.updateOne({ _id: systemGalleryId }, { $setOnInsert: {
   name: 'Admin', email: '__little-moments-gallery@internal.invalid', isSystemGallery: true,
   visibility: 'all', visibleTo: [], createdAt: new Date()
@@ -64,7 +67,7 @@ app.use(helmet({
 app.use(express.json({ limit: '20kb' }));
 app.use((req, res, next) => {
   const origin = req.get('origin');
-  if (origin && origin !== `${req.protocol}://${req.get('host')}`) {
+  if (origin && origin !== `${req.protocol}://${req.get('host')}` && req.path !== '/auth/spotify/callback') {
     return res.status(403).json({ error: 'Cross-site requests are not allowed.' });
   }
   next();
@@ -85,6 +88,7 @@ const adminCookie = { ...sessionCookie, maxAge: 4 * 60 * 60 * 1000 };
 const sessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many sign-in attempts. Please try again in 15 minutes.' } });
 const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many admin sign-in attempts. Please try again in 15 minutes.' } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Upload limit reached. Please try again later.' } });
+const spotifyAuthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many Spotify connection attempts. Please try again later.' } });
 
 function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
@@ -126,6 +130,29 @@ function secureTextEqual(left, right) {
   const a = crypto.createHash('sha256').update(String(left)).digest();
   const b = crypto.createHash('sha256').update(String(right)).digest();
   return crypto.timingSafeEqual(a, b);
+}
+
+const spotifyRedirectUri = process.env.SPOTIFY_REDIRECT_URI || 'https://lovebaby.onrender.com/auth/spotify/callback';
+function spotifyEncryptionKey() {
+  return crypto.createHash('sha256').update(`${process.env.SESSION_SECRET}:spotify-oauth-tokens`).digest();
+}
+
+function encryptSpotifyTokens(tokens) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', spotifyEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(tokens), 'utf8'), cipher.final()]);
+  return { iv: iv.toString('base64url'), tag: cipher.getAuthTag().toString('base64url'), ciphertext: ciphertext.toString('base64url') };
+}
+
+function decryptSpotifyTokens(encrypted) {
+  const decipher = crypto.createDecipheriv('aes-256-gcm', spotifyEncryptionKey(), Buffer.from(encrypted.iv, 'base64url'));
+  decipher.setAuthTag(Buffer.from(encrypted.tag, 'base64url'));
+  const plaintext = Buffer.concat([decipher.update(Buffer.from(encrypted.ciphertext, 'base64url')), decipher.final()]).toString('utf8');
+  return JSON.parse(plaintext);
+}
+
+function redirectSpotifyResult(res, result) {
+  return res.redirect(303, `/?spotify=${encodeURIComponent(result)}`);
 }
 
 function requireAdmin(req, res, next) {
@@ -191,6 +218,141 @@ function cleanEntry(entry, shareLinkToken = null) {
 }
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
+app.get('/auth/spotify', requireUser, spotifyAuthLimiter, async (req, res) => {
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  if (!clientId) return res.status(503).send('Spotify is not configured on this service yet.');
+  const state = crypto.randomBytes(32).toString('base64url');
+  const verifier = crypto.randomBytes(64).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  await spotifyOAuthStates.insertOne({
+    stateHash: crypto.createHash('sha256').update(state).digest('hex'),
+    userId: req.user._id,
+    verifier: encryptSpotifyTokens({ verifier }),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+  });
+  const authorizeUrl = new URL('https://accounts.spotify.com/authorize');
+  authorizeUrl.search = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: spotifyRedirectUri,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    state,
+    scope: 'user-read-private'
+  }).toString();
+  res.set('Cache-Control', 'no-store');
+  res.redirect(303, authorizeUrl.href);
+});
+
+app.get('/auth/spotify/callback', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  if (!state || state.length > 200) return redirectSpotifyResult(res, 'invalid');
+  const stateHash = crypto.createHash('sha256').update(state).digest('hex');
+  const stateRecord = await spotifyOAuthStates.findOneAndDelete({ stateHash, expiresAt: { $gt: new Date() } });
+  if (!stateRecord) return redirectSpotifyResult(res, 'invalid');
+  if (req.query.error) return redirectSpotifyResult(res, 'denied');
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  if (!code || !clientId || !ObjectId.isValid(stateRecord.userId)) return redirectSpotifyResult(res, 'error');
+
+  try {
+    const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      signal: AbortSignal.timeout(10_000),
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: spotifyRedirectUri,
+        client_id: clientId,
+        code_verifier: decryptSpotifyTokens(stateRecord.verifier).verifier
+      })
+    });
+    if (!tokenResponse.ok) return redirectSpotifyResult(res, 'error');
+    const tokenData = await tokenResponse.json();
+    if (!tokenData.access_token || !Number.isFinite(tokenData.expires_in)) return redirectSpotifyResult(res, 'error');
+
+    let spotifyProfile = null;
+    try {
+      const profileResponse = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${tokenData.access_token}` }, signal: AbortSignal.timeout(10_000) });
+      if (profileResponse.ok) spotifyProfile = await profileResponse.json();
+    } catch { /* The token can still be safely saved if the optional profile lookup fails. */ }
+    const currentUser = await users.findOne({ _id: stateRecord.userId }, { projection: { suspended: 1 } });
+    if (!currentUser || currentUser.suspended) return redirectSpotifyResult(res, 'error');
+    const storedTokens = {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token || null,
+      expiresAt: Date.now() + tokenData.expires_in * 1000,
+      scope: tokenData.scope || ''
+    };
+    await users.updateOne({ _id: stateRecord.userId }, { $set: {
+      spotifyConnection: {
+        encryptedTokens: encryptSpotifyTokens(storedTokens),
+        spotifyUserId: spotifyProfile?.id || null,
+        displayName: spotifyProfile?.display_name || null,
+        connectedAt: new Date()
+      }
+    } });
+    return redirectSpotifyResult(res, 'connected');
+  } catch {
+    return redirectSpotifyResult(res, 'error');
+  }
+});
+
+app.get('/api/spotify/status', requireUser, (req, res) => {
+  const connection = req.user.spotifyConnection;
+  res.json({
+    configured: Boolean(process.env.SPOTIFY_CLIENT_ID),
+    connected: Boolean(connection?.encryptedTokens),
+    displayName: connection?.displayName || null
+  });
+});
+
+app.get('/api/spotify/profile', requireUser, async (req, res) => {
+  const connection = req.user.spotifyConnection;
+  if (!connection?.encryptedTokens) return res.status(404).json({ error: 'Connect Spotify first.' });
+  let tokens;
+  try { tokens = decryptSpotifyTokens(connection.encryptedTokens); }
+  catch { return res.status(401).json({ error: 'Reconnect Spotify to continue.' }); }
+
+  if (tokens.expiresAt <= Date.now() + 60_000) {
+    if (!tokens.refreshToken) return res.status(401).json({ error: 'Reconnect Spotify to continue.' });
+    let refreshed;
+    try {
+      refreshed = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: tokens.refreshToken, client_id: process.env.SPOTIFY_CLIENT_ID || '' }),
+        signal: AbortSignal.timeout(10_000)
+      });
+    } catch { return res.status(502).json({ error: 'Spotify could not be reached. Try again shortly.' }); }
+    if (!refreshed.ok) return res.status(401).json({ error: 'Reconnect Spotify to continue.' });
+    const refreshedData = await refreshed.json();
+    if (!refreshedData.access_token || !Number.isFinite(refreshedData.expires_in)) return res.status(502).json({ error: 'Spotify returned an invalid token response. Please reconnect.' });
+    tokens = {
+      ...tokens,
+      accessToken: refreshedData.access_token,
+      refreshToken: refreshedData.refresh_token || tokens.refreshToken,
+      expiresAt: Date.now() + refreshedData.expires_in * 1000
+    };
+    await users.updateOne({ _id: req.user._id }, { $set: { 'spotifyConnection.encryptedTokens': encryptSpotifyTokens(tokens) } });
+  }
+
+  let profileResponse;
+  try {
+    profileResponse = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: `Bearer ${tokens.accessToken}` }, signal: AbortSignal.timeout(10_000) });
+  } catch { return res.status(502).json({ error: 'Spotify could not be reached. Try again shortly.' }); }
+  if (!profileResponse.ok) return res.status(502).json({ error: 'Spotify profile could not be loaded. Try reconnecting.' });
+  const profile = await profileResponse.json();
+  res.json({ id: profile.id, displayName: profile.display_name || null, product: profile.product || null });
+});
+
+app.delete('/api/spotify/connection', requireUser, async (req, res) => {
+  await users.updateOne({ _id: req.user._id }, { $unset: { spotifyConnection: '' } });
+  res.json({ ok: true });
+});
 
 app.post('/api/auth/register', sessionLimiter, async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
