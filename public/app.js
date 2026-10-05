@@ -145,8 +145,24 @@ function addMemoryTools(container, item) {
     const listen = document.createElement('a');
     listen.className = 'memory-tool-button'; listen.href = item.spotifyTrack.url;
     listen.target = '_blank'; listen.rel = 'noopener noreferrer';
-    listen.textContent = `♫ Listen · ${item.spotifyTrack.title}`;
+    listen.textContent = `♫ Open Spotify · ${item.spotifyTrack.title}`;
     actions.append(listen);
+    const playerDetails = document.createElement('details');
+    playerDetails.className = 'memory-spotify-player';
+    const playerSummary = document.createElement('summary');
+    playerSummary.textContent = 'Play here';
+    playerDetails.append(playerSummary);
+    playerDetails.addEventListener('toggle', () => {
+      if (!playerDetails.open || playerDetails.querySelector('iframe')) return;
+      const frame = document.createElement('iframe');
+      frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(item.spotifyTrack.id)}?utm_source=generator`;
+      frame.title = `Spotify track: ${item.spotifyTrack.title || 'Memory song'}`;
+      frame.loading = 'lazy'; frame.allowFullscreen = true;
+      frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin';
+      playerDetails.append(frame);
+    });
+    actions.append(playerDetails);
   }
   if ((item.kind === 'image' || item.kind === 'video') && item.canDelete && document.body.dataset.signedIn === 'true') {
     const songForm = document.createElement('form');
