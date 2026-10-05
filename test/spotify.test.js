@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeSpotifyTrack } from '../lib/spotify.js';
+import { normalizeSpotifyTrack, spotifySearchError } from '../lib/spotify.js';
 
 const id = '4uLU6hMCjMI75M1A2tKUQC';
 
@@ -22,4 +22,11 @@ test('rejects non-Spotify hosts, non-HTTPS links, albums, and malformed IDs', ()
     `https://open.spotify.com/album/${id}`,
     'not a Spotify link'
   ]) assert.throws(() => normalizeSpotifyTrack(value), { statusCode: 400 });
+});
+
+test('maps Spotify catalog search failures to actionable safe messages', () => {
+  assert.match(spotifySearchError(403), /Premium and Developer Mode access/);
+  assert.match(spotifySearchError(400), /shorter song or artist/);
+  assert.match(spotifySearchError(429), /rate limited/);
+  assert.match(spotifySearchError(500), /HTTP 500/);
 });
