@@ -12,7 +12,7 @@ import helmet from 'helmet';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
 import { fileURLToPath } from 'node:url';
-import { normalizeSpotifyTrack } from './lib/spotify.js';
+import { normalizeSpotifyTrack, spotifySearchError } from './lib/spotify.js';
 
 const required = ['MONGODB_URI', 'SESSION_SECRET', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 const missing = required.filter((key) => !process.env[key]);
@@ -262,7 +262,7 @@ async function getSpotifyCatalogToken() {
 
 async function searchSpotifyTracks(query) {
   const token = await getSpotifyCatalogToken();
-  const params = new URLSearchParams({ q: query, type: 'track', limit: '8' });
+  const params = new URLSearchParams({ q: query, type: 'track', limit: '8', market: 'IN' });
   let response;
   try {
     response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
@@ -277,7 +277,7 @@ async function searchSpotifyTracks(query) {
     const error = new Error('Spotify search session expired. Please search again.'); error.statusCode = 502; throw error;
   }
   if (!response.ok) {
-    const error = new Error(response.status === 429 ? 'Spotify search is rate limited. Wait a moment and try again.' : 'Spotify could not complete this song search.');
+    const error = new Error(spotifySearchError(response.status));
     error.statusCode = response.status === 429 ? 429 : 502; throw error;
   }
   const data = await response.json();
