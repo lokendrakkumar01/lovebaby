@@ -26,5 +26,7 @@ services:
         sync: false
       - key: SPOTIFY_CLIENT_ID
         sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
       - key: SPOTIFY_REDIRECT_URI
         value: https://lovebaby.onrender.com/auth/spotify/callback

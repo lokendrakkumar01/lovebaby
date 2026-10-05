@@ -22,6 +22,33 @@ async function api(path, options = {}) {
 
 function notice(element, message = '') { element.textContent = message; }
 
+function renderSpotifyResults(target, tracks, onSelect) {
+  target.replaceChildren();
+  tracks.forEach((track) => {
+    const option = document.createElement('button');
+    option.type = 'button'; option.className = 'spotify-result';
+    if (track.image) { const cover = document.createElement('img'); cover.src = track.image; cover.alt = ''; cover.loading = 'lazy'; option.append(cover); }
+    const copy = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = track.title;
+    const meta = document.createElement('small'); meta.textContent = [track.artist, track.album].filter(Boolean).join(' · ');
+    copy.append(title, meta); option.append(copy);
+    option.addEventListener('click', () => onSelect(track));
+    target.append(option);
+  });
+}
+
+async function searchSpotify(endpoint, query, target, status, onSelect) {
+  const term = query.trim();
+  if (term.length < 2) { notice(status, 'Type at least 2 letters to search.'); target.replaceChildren(); return; }
+  notice(status, 'Searching Spotify…');
+  target.replaceChildren();
+  try {
+    const data = await api(`${endpoint}?q=${encodeURIComponent(term)}`);
+    renderSpotifyResults(target, data.tracks || [], onSelect);
+    notice(status, data.tracks?.length ? `${data.tracks.length} songs found. Select one to use it.` : 'No songs found. Try another search.');
+  } catch (error) { notice(status, error.message); }
+}
+
 function displayAdmin() {
   loginCard.classList.add('hidden');
   adminApp.classList.remove('hidden');
@@ -211,6 +238,20 @@ function renderMemories() {
           } catch (error) { notice($('#admin-notice'), error.message); saveSong.disabled = false; }
         });
         songPanel.append(form);
+        const searchBox = document.createElement('div'); searchBox.className = 'spotify-picker memory-spotify-picker';
+        const searchInput = document.createElement('input'); searchInput.type = 'search'; searchInput.maxLength = 100; searchInput.placeholder = 'Search songs or artists'; searchInput.setAttribute('aria-label', 'Search Spotify songs');
+        const searchButton = document.createElement('button'); searchButton.type = 'button'; searchButton.className = 'quiet'; searchButton.textContent = 'Search';
+        const searchStatus = document.createElement('small'); searchStatus.setAttribute('role', 'status');
+        const results = document.createElement('div'); results.className = 'spotify-search-results';
+        searchButton.addEventListener('click', () => searchSpotify('/api/admin/spotify/search', searchInput.value, results, searchStatus, async (track) => {
+          searchButton.disabled = true;
+          try {
+            const updated = await api(`/api/admin/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: track.id, title: `${track.title} · ${track.artist}` }) });
+            item.spotifyTrack = updated.spotifyTrack; renderMemories(); notice($('#admin-notice'), `“${track.title}” added to this memory.`);
+          } catch (error) { notice(searchStatus, error.message); searchButton.disabled = false; }
+        }));
+        searchInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); searchButton.click(); } });
+        searchBox.append(searchInput, searchButton, searchStatus, results); songPanel.append(searchBox);
       }
       if (item.spotifyTrack) {
         const clearSong = document.createElement('button');
@@ -360,6 +401,8 @@ function storyPayload() {
     subtitle: $('#story-subtitle').value.trim(),
     message: $('#story-message').value.trim(),
     spotifyTrackUrl: $('#story-song-url').value.trim(),
+    spotifyTrackId: $('#story-song-id').value,
+    spotifyTrackTitle: $('#story-song-title').value,
     memoryIds: storyMemoryIds
   };
 }
@@ -382,10 +425,21 @@ async function loadStory() {
   $('#story-subtitle').value = story.subtitle || '';
   $('#story-message').value = story.message || '';
   $('#story-song-url').value = story.spotifyTrack?.url || '';
+  $('#story-song-id').value = story.spotifyTrack?.id || '';
+  $('#story-song-title').value = story.spotifyTrack?.title || '';
   storyMemoryIds = Array.isArray(story.memoryIds) ? story.memoryIds : null;
   showStoryLink(data.url);
   renderMemories();
 }
+
+$('#story-song-search-button').addEventListener('click', () => searchSpotify('/api/admin/spotify/search', $('#story-song-search').value, $('#story-song-search-results'), $('#story-song-search-status'), (track) => {
+  $('#story-song-url').value = track.url;
+  $('#story-song-id').value = track.id;
+  $('#story-song-title').value = `${track.title} · ${track.artist}`;
+  notice($('#story-song-search-status'), `Selected “${track.title}”. Save the story to apply it.`);
+}));
+$('#story-song-search').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); $('#story-song-search-button').click(); } });
+$('#story-song-url').addEventListener('input', () => { $('#story-song-id').value = ''; $('#story-song-title').value = ''; });
 
 async function openStudio() {
   displayAdmin();

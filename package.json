@@ -6,7 +6,8 @@
   "engines": { "node": ">=20.19.0" },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

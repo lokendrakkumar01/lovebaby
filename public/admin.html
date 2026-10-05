@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f7f1eb">
   <meta name="robots" content="noindex,nofollow">
   <title>Admin · Little Moments</title>
-  <link rel="stylesheet" href="/admin.css?v=memory-songs-1">
-  <script src="/admin.js?v=memory-songs-1" defer></script>
+  <link rel="stylesheet" href="/admin.css?v=spotify-search-2">
+  <script src="/admin.js?v=spotify-search-2" defer></script>
 </head>
 <body>
   <header class="admin-top"><a class="admin-brand" href="/">little moments <span>♡</span></a><span>ADMIN STUDIO</span></header>
@@ -44,6 +44,8 @@
           <label class="story-field">Gallery subtitle<input id="story-subtitle" maxlength="180" value="Every photo, video and message, together."></label>
           <label class="story-field">Personal message<textarea id="story-message" maxlength="1000" rows="3" placeholder="Write a little note for the person opening this story…"></textarea></label>
           <label class="story-field">Story song (optional)<input id="story-song-url" type="url" maxlength="500" placeholder="Paste a Spotify track link"></label>
+          <div class="spotify-picker"><label class="story-field" for="story-song-search">Search Spotify songs<input id="story-song-search" type="search" maxlength="100" placeholder="Song, artist, or album"></label><button class="quiet" id="story-song-search-button" type="button">Search songs</button><small id="story-song-search-status" role="status"></small><div class="spotify-search-results" id="story-song-search-results"></div></div>
+          <input id="story-song-id" type="hidden"><input id="story-song-title" type="hidden">
           <div class="admin-story-memory-help">The Spotify player is separate from the photos. Your guest taps play when they want to listen.</div>
           <div class="admin-story-memory-help">The story can include every photo and video together. Restricted, suspended or admin-hidden memories stay private.</div>
           <button class="quiet story-select-all" id="story-select-all" type="button">Include all eligible memories</button>

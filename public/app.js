@@ -23,6 +23,29 @@ async function api(path, options = {}) {
   return data;
 }
 
+function renderSpotifyResults(target, tracks, onSelect) {
+  target.replaceChildren();
+  tracks.forEach((track) => {
+    const option = document.createElement('button'); option.type = 'button'; option.className = 'spotify-result';
+    if (track.image) { const image = document.createElement('img'); image.src = track.image; image.alt = ''; image.loading = 'lazy'; option.append(image); }
+    const copy = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = track.title;
+    const info = document.createElement('small'); info.textContent = [track.artist, track.album].filter(Boolean).join(' · ');
+    copy.append(title, info); option.append(copy); option.addEventListener('click', () => onSelect(track)); target.append(option);
+  });
+}
+
+async function searchSpotifySongs(query, target, status, onSelect) {
+  const term = query.trim();
+  if (term.length < 2) { setNotice(status, 'Type at least 2 letters to search.'); target.replaceChildren(); return; }
+  setNotice(status, 'Searching Spotify…'); target.replaceChildren();
+  try {
+    const results = await api(`/api/spotify/search?q=${encodeURIComponent(term)}`);
+    renderSpotifyResults(target, results.tracks || [], onSelect);
+    setNotice(status, results.tracks?.length ? `${results.tracks.length} songs found. Select one to add it.` : 'No songs found. Try another search.');
+  } catch (error) { setNotice(status, error.message); }
+}
+
 function setNotice(element, message = '') {
   element.textContent = message;
 }
@@ -182,6 +205,20 @@ function addMemoryTools(container, item) {
       } catch (error) { setNotice($('#dashboard-error'), error.message); saveSong.disabled = false; }
     });
     actions.append(songForm);
+    const picker = document.createElement('div'); picker.className = 'spotify-picker member-spotify-picker';
+    const searchInput = document.createElement('input'); searchInput.type = 'search'; searchInput.maxLength = 100; searchInput.placeholder = 'Search Spotify songs or artists'; searchInput.setAttribute('aria-label', 'Search Spotify songs');
+    const searchButton = document.createElement('button'); searchButton.type = 'button'; searchButton.className = 'memory-tool-button'; searchButton.textContent = 'Search songs';
+    const searchStatus = document.createElement('small'); searchStatus.setAttribute('role', 'status');
+    const results = document.createElement('div'); results.className = 'spotify-search-results';
+    searchButton.addEventListener('click', () => searchSpotifySongs(searchInput.value, results, searchStatus, async (track) => {
+      searchButton.disabled = true;
+      try {
+        await api(`/api/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: track.id, title: `${track.title} · ${track.artist}` }) });
+        await loadItems(); setNotice($('#dashboard-error'), `“${track.title}” added to this memory.`);
+      } catch (error) { setNotice(searchStatus, error.message); searchButton.disabled = false; }
+    }));
+    searchInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); searchButton.click(); } });
+    picker.append(searchInput, searchButton, searchStatus, results); actions.append(picker);
     if (item.spotifyTrack) {
       actions.append(makeButton('Remove song', 'memory-tool-button', async () => {
         try { await api(`/api/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'DELETE' }); await loadItems(); setNotice($('#dashboard-error'), 'Song removed from this memory.'); }

@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
 import { fileURLToPath } from 'node:url';
+import { normalizeSpotifyTrack } from './lib/spotify.js';
 
 const required = ['MONGODB_URI', 'SESSION_SECRET', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 const missing = required.filter((key) => !process.env[key]);
@@ -56,7 +57,7 @@ app.disable('x-powered-by');
 app.use(helmet({
   contentSecurityPolicy: { directives: {
     defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'"],
-    imgSrc: ["'self'", 'https://res.cloudinary.com', 'data:'],
+    imgSrc: ["'self'", 'https://res.cloudinary.com', 'https://i.scdn.co', 'data:'],
     mediaSrc: ["'self'", 'https://res.cloudinary.com'],
     connectSrc: ["'self'"], frameSrc: ["'self'", 'https://open.spotify.com'], fontSrc: ["'self'"], objectSrc: ["'none'"],
     baseUri: ["'self'"], frameAncestors: ["'none'"], formAction: ["'self'"]
@@ -89,6 +90,7 @@ const sessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standard
 const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many admin sign-in attempts. Please try again in 15 minutes.' } });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Upload limit reached. Please try again later.' } });
 const spotifyAuthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Too many Spotify connection attempts. Please try again later.' } });
+const spotifySearchLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Song search is busy. Please wait a minute and try again.' } });
 
 function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
@@ -218,39 +220,85 @@ function cleanEntry(entry, shareLinkToken = null) {
   };
 }
 
-async function resolveSpotifyTrack(value) {
-  const input = String(value || '').trim().slice(0, 500);
-  if (!input) return null;
-  let trackId = input.match(/^spotify:track:([A-Za-z0-9]{22})$/)?.[1] || null;
-  if (!trackId) {
-    try {
-      const url = new URL(input);
-      if (url.protocol !== 'https:' || !['open.spotify.com', 'www.open.spotify.com'].includes(url.hostname)) throw new Error();
-      trackId = url.pathname.match(/^\/track\/([A-Za-z0-9]{22})\/?$/)?.[1] || null;
-    } catch { /* Return the same safe validation message below. */ }
-  }
-  if (!trackId) {
-    const error = new Error('Paste a Spotify song link or spotify:track URI.');
-    error.statusCode = 400;
+async function resolveSpotifyTrack(value, title = '') {
+  return normalizeSpotifyTrack(value, title);
+}
+
+let spotifyCatalogToken = null;
+async function getSpotifyCatalogToken() {
+  if (spotifyCatalogToken && spotifyCatalogToken.expiresAt > Date.now() + 60_000) return spotifyCatalogToken.value;
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    const error = new Error('Spotify song search is not configured. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to the Render service environment.');
+    error.statusCode = 503;
     throw error;
   }
-  const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
   let response;
   try {
-    response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(spotifyUrl)}`, { signal: AbortSignal.timeout(8_000) });
+    response = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ grant_type: 'client_credentials' }),
+      signal: AbortSignal.timeout(10_000)
+    });
   } catch {
-    const error = new Error('Spotify could not be reached. Try again shortly.');
-    error.statusCode = 502;
-    throw error;
+    const error = new Error('Spotify search could not be reached. Try again shortly.'); error.statusCode = 502; throw error;
   }
   if (!response.ok) {
-    const error = new Error('Spotify could not find that song. Check the shared track link and try again.');
-    error.statusCode = 400;
-    throw error;
+    spotifyCatalogToken = null;
+    const error = new Error('Spotify rejected the server credentials. Check the Client ID and rotated Client Secret in Render.'); error.statusCode = 502; throw error;
   }
-  const metadata = await response.json();
-  return { id: trackId, title: String(metadata.title || 'Spotify track').slice(0, 180), url: spotifyUrl };
+  const data = await response.json();
+  if (!data.access_token || !Number.isFinite(data.expires_in)) {
+    const error = new Error('Spotify returned an invalid search token.'); error.statusCode = 502; throw error;
+  }
+  spotifyCatalogToken = { value: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+  return spotifyCatalogToken.value;
 }
+
+async function searchSpotifyTracks(query) {
+  const token = await getSpotifyCatalogToken();
+  const params = new URLSearchParams({ q: query, type: 'track', limit: '8' });
+  let response;
+  try {
+    response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000)
+    });
+  } catch {
+    const error = new Error('Spotify song search failed. Try again shortly.'); error.statusCode = 502; throw error;
+  }
+  if (response.status === 401) {
+    spotifyCatalogToken = null;
+    const error = new Error('Spotify search session expired. Please search again.'); error.statusCode = 502; throw error;
+  }
+  if (!response.ok) {
+    const error = new Error(response.status === 429 ? 'Spotify search is rate limited. Wait a moment and try again.' : 'Spotify could not complete this song search.');
+    error.statusCode = response.status === 429 ? 429 : 502; throw error;
+  }
+  const data = await response.json();
+  return (data.tracks?.items || []).map((track) => ({
+    id: track.id,
+    title: track.name,
+    artist: (track.artists || []).map((artist) => artist.name).join(', '),
+    album: track.album?.name || '',
+    image: track.album?.images?.at(-1)?.url || null,
+    url: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
+  }));
+}
+
+function spotifySearchHandler(req, res) {
+  const query = String(req.query.q || '').trim().slice(0, 100);
+  if (query.length < 2) return res.status(400).json({ error: 'Type at least 2 letters to search Spotify.' });
+  searchSpotifyTracks(query).then((tracks) => res.json({ tracks })).catch((error) => res.status(error.statusCode || 502).json({ error: error.message || 'Spotify search failed.' }));
+}
+
+app.get('/api/spotify/search', requireUser, spotifySearchLimiter, spotifySearchHandler);
+app.get('/api/admin/spotify/search', requireAdmin, spotifySearchLimiter, spotifySearchHandler);
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -613,7 +661,7 @@ app.post('/api/items/:id/spotify-track', requireUser, async (req, res) => {
   const id = new ObjectId(req.params.id);
   const entry = await entries.findOne({ _id: id, ownerId: req.user._id, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } }, { projection: { _id: 1 } });
   if (!entry) return res.status(404).json({ error: 'Only your visible photo or video memories can be edited here.' });
-  const spotifyTrack = await resolveSpotifyTrack(req.body?.url);
+  const spotifyTrack = await resolveSpotifyTrack(req.body?.trackId || req.body?.url, req.body?.title);
   if (!spotifyTrack) return res.status(400).json({ error: 'Add a Spotify song link first.' });
   await entries.updateOne({ _id: id }, { $set: { spotifyTrack, spotifyTrackUpdatedAt: new Date(), spotifyTrackUpdatedBy: req.user._id } });
   res.json({ spotifyTrack });
@@ -844,7 +892,7 @@ app.put('/api/admin/story', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Choose a valid set of story memories.' });
   }
   let spotifyTrack;
-  try { spotifyTrack = await resolveSpotifyTrack(req.body?.spotifyTrackUrl); }
+  try { spotifyTrack = await resolveSpotifyTrack(req.body?.spotifyTrackId || req.body?.spotifyTrackUrl, req.body?.spotifyTrackTitle); }
   catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
   const ids = memoryIds === null ? null : [...new Set(memoryIds)];
   if (ids?.length) {
@@ -908,7 +956,7 @@ app.post('/api/admin/items/:id/spotify-track', requireAdmin, async (req, res) =>
   const id = new ObjectId(req.params.id);
   const entry = await entries.findOne({ _id: id, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } }, { projection: { _id: 1 } });
   if (!entry) return res.status(404).json({ error: 'That visible photo or video was not found.' });
-  const spotifyTrack = await resolveSpotifyTrack(req.body?.url);
+  const spotifyTrack = await resolveSpotifyTrack(req.body?.trackId || req.body?.url, req.body?.title);
   if (!spotifyTrack) return res.status(400).json({ error: 'Add a Spotify song link first.' });
   await entries.updateOne({ _id: id }, { $set: { spotifyTrack, spotifyTrackUpdatedAt: new Date(), spotifyTrackUpdatedBy: 'admin' } });
   res.json({ spotifyTrack });
