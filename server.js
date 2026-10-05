@@ -499,6 +499,14 @@ async function visibleAlbumOwners(viewer) {
   return owners.filter((owner) => albumVisibleTo(owner, viewer));
 }
 
+async function publicAlbumOwners() {
+  return users.find({ suspended: { $ne: true }, $or: [
+    { _id: systemGalleryId },
+    { visibility: 'all' },
+    { visibility: { $exists: false } }
+  ] }, { projection: { _id: 1, name: 1 } }).toArray();
+}
+
 app.get('/api/items', requireUser, async (req, res) => {
   const owners = await visibleAlbumOwners(req.user);
   const ownerNames = new Map(owners.map((owner) => [owner._id.toString(), owner.name]));
@@ -628,9 +636,11 @@ app.delete('/api/contributor-link', requireUser, async (req, res) => {
 app.get('/api/contribute/:token', async (req, res) => {
   const owner = await users.findOne({ contributorToken: req.params.token, suspended: { $ne: true } }, { projection: { name: 1, _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'This upload link is no longer available.' });
-  const docs = await entries.find({ ownerId: { $in: [owner._id, systemGalleryId] }, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
+  const owners = await publicAlbumOwners();
+  const ownerNames = new Map(owners.map((item) => [item._id.toString(), item.name]));
+  const docs = await entries.find({ ownerId: { $in: owners.map((item) => item._id) }, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
   res.set('Cache-Control', 'no-store');
-  res.json({ ownerName: owner.name, items: docs.map((entry) => cleanEntry(entry, req.params.token)) });
+  res.json({ ownerName: owner.name, items: docs.map((entry) => ({ ...cleanEntry(entry, req.params.token), ownerName: ownerNames.get(entry.ownerId.toString()) || 'Admin' })) });
 });
 
 async function requireContributor(req, res, next) {
@@ -735,7 +745,8 @@ app.post('/api/items/:id/share', requireUser, async (req, res) => {
 
 app.post('/api/contribute/:token/items/:id/share', requireContributor, async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
-  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: req.contributorOwner._id, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
+  const owners = await publicAlbumOwners();
+  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: { $in: owners.map((item) => item._id) }, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   const memoryShareToken = entry.memoryShareToken || crypto.randomBytes(32).toString('base64url');
   await entries.updateOne({ _id: entry._id }, { $set: { memoryShareToken } });
@@ -784,7 +795,8 @@ app.get('/api/shared/:token/media/:id', async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
   const owner = await users.findOne({ $or: [{ shareToken: req.params.token }, { contributorToken: req.params.token }] }, { projection: { _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'This album link is no longer available.' });
-  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: { $in: [owner._id, systemGalleryId] }, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
+  const owners = await publicAlbumOwners();
+  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: { $in: owners.map((item) => item._id) }, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
@@ -802,11 +814,13 @@ app.delete('/api/share', requireUser, async (req, res) => {
 });
 
 app.get('/api/shared/:token', async (req, res) => {
-  const owner = await users.findOne({ shareToken: req.params.token }, { projection: { name: 1, _id: 1 } });
+  const owner = await users.findOne({ shareToken: req.params.token, suspended: { $ne: true } }, { projection: { name: 1, _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'This album link is no longer available.' });
-  const docs = await entries.find({ ownerId: { $in: [owner._id, systemGalleryId] }, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
+  const owners = await publicAlbumOwners();
+  const ownerNames = new Map(owners.map((item) => [item._id.toString(), item.name]));
+  const docs = await entries.find({ ownerId: { $in: owners.map((item) => item._id) }, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
   res.set('Cache-Control', 'no-store');
-  res.json({ ownerName: owner.name, items: docs.map((entry) => cleanEntry(entry, req.params.token)) });
+  res.json({ ownerName: owner.name, items: docs.map((entry) => ({ ...cleanEntry(entry, req.params.token), ownerName: ownerNames.get(entry.ownerId.toString()) || 'Admin' })) });
 });
 
 app.post('/api/admin/login', adminLimiter, (req, res) => {
