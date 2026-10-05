@@ -58,7 +58,7 @@ app.use(helmet({
     defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'"],
     imgSrc: ["'self'", 'https://res.cloudinary.com', 'data:'],
     mediaSrc: ["'self'", 'https://res.cloudinary.com'],
-    connectSrc: ["'self'"], fontSrc: ["'self'"], objectSrc: ["'none'"],
+    connectSrc: ["'self'"], frameSrc: ["'self'", 'https://open.spotify.com'], fontSrc: ["'self'"], objectSrc: ["'none'"],
     baseUri: ["'self'"], frameAncestors: ["'none'"], formAction: ["'self'"]
   } },
   referrerPolicy: { policy: 'no-referrer' },
@@ -213,8 +213,43 @@ function cleanEntry(entry, shareLinkToken = null) {
     caption: entry.caption || '',
     mediaUrl: mediaUrl(entry, shareLinkToken),
     resourceType: entry.resourceType || null,
-    createdAt: entry.createdAt.toISOString()
+    createdAt: entry.createdAt.toISOString(),
+    spotifyTrack: entry.spotifyTrack || null
   };
+}
+
+async function resolveSpotifyTrack(value) {
+  const input = String(value || '').trim().slice(0, 500);
+  if (!input) return null;
+  let trackId = input.match(/^spotify:track:([A-Za-z0-9]{22})$/)?.[1] || null;
+  if (!trackId) {
+    try {
+      const url = new URL(input);
+      if (url.protocol !== 'https:' || !['open.spotify.com', 'www.open.spotify.com'].includes(url.hostname)) throw new Error();
+      trackId = url.pathname.match(/^\/track\/([A-Za-z0-9]{22})\/?$/)?.[1] || null;
+    } catch { /* Return the same safe validation message below. */ }
+  }
+  if (!trackId) {
+    const error = new Error('Paste a Spotify song link or spotify:track URI.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
+  let response;
+  try {
+    response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(spotifyUrl)}`, { signal: AbortSignal.timeout(8_000) });
+  } catch {
+    const error = new Error('Spotify could not be reached. Try again shortly.');
+    error.statusCode = 502;
+    throw error;
+  }
+  if (!response.ok) {
+    const error = new Error('Spotify could not find that song. Check the shared track link and try again.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const metadata = await response.json();
+  return { id: trackId, title: String(metadata.title || 'Spotify track').slice(0, 180), url: spotifyUrl };
 }
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
@@ -573,6 +608,23 @@ app.delete('/api/items/:id', requireUser, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/items/:id/spotify-track', requireUser, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  const id = new ObjectId(req.params.id);
+  const entry = await entries.findOne({ _id: id, ownerId: req.user._id, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } }, { projection: { _id: 1 } });
+  if (!entry) return res.status(404).json({ error: 'Only your visible photo or video memories can be edited here.' });
+  const spotifyTrack = await resolveSpotifyTrack(req.body?.url);
+  if (!spotifyTrack) return res.status(400).json({ error: 'Add a Spotify song link first.' });
+  await entries.updateOne({ _id: id }, { $set: { spotifyTrack, spotifyTrackUpdatedAt: new Date(), spotifyTrackUpdatedBy: req.user._id } });
+  res.json({ spotifyTrack });
+});
+
+app.delete('/api/items/:id/spotify-track', requireUser, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  await entries.updateOne({ _id: new ObjectId(req.params.id), ownerId: req.user._id }, { $unset: { spotifyTrack: '', spotifyTrackUpdatedAt: '', spotifyTrackUpdatedBy: '' } });
+  res.json({ ok: true });
+});
+
 async function streamMedia(req, res, entry, { attachment = false } = {}) {
   if (!entry?.publicId) return res.status(404).json({ error: 'That memory was not found.' });
   const headers = {};
@@ -791,6 +843,9 @@ app.put('/api/admin/story', requireAdmin, async (req, res) => {
   if (memoryIds !== null && (!Array.isArray(memoryIds) || memoryIds.length > 500 || memoryIds.some((id) => !ObjectId.isValid(id)))) {
     return res.status(400).json({ error: 'Choose a valid set of story memories.' });
   }
+  let spotifyTrack;
+  try { spotifyTrack = await resolveSpotifyTrack(req.body?.spotifyTrackUrl); }
+  catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
   const ids = memoryIds === null ? null : [...new Set(memoryIds)];
   if (ids?.length) {
     const selected = await entries.find({ _id: { $in: ids.map((id) => new ObjectId(id)) }, adminHidden: { $ne: true } }, { projection: { _id: 1, ownerId: 1 } }).toArray();
@@ -799,7 +854,7 @@ app.put('/api/admin/story', requireAdmin, async (req, res) => {
     const eligibleIds = new Set(selected.filter((entry) => eligibleOwners.has(entry.ownerId.toString())).map((entry) => entry._id.toString()));
     if (eligibleIds.size !== ids.length) return res.status(400).json({ error: 'Some selected memories are unavailable for public stories. Refresh the memories and try again.' });
   }
-  const storyConfig = { title, subtitle, message, memoryIds: ids, updatedAt: new Date() };
+  const storyConfig = { title, subtitle, message, memoryIds: ids, spotifyTrack, updatedAt: new Date() };
   await users.updateOne({ _id: systemGalleryId }, { $set: { storyConfig } });
   res.json({ ok: true, story: storyConfig });
 });
@@ -848,6 +903,23 @@ app.patch('/api/admin/items/:id/hide', requireAdmin, async (req, res) => {
   res.json({ ok: true, hidden: req.body.hidden });
 });
 
+app.post('/api/admin/items/:id/spotify-track', requireAdmin, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  const id = new ObjectId(req.params.id);
+  const entry = await entries.findOne({ _id: id, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } }, { projection: { _id: 1 } });
+  if (!entry) return res.status(404).json({ error: 'That visible photo or video was not found.' });
+  const spotifyTrack = await resolveSpotifyTrack(req.body?.url);
+  if (!spotifyTrack) return res.status(400).json({ error: 'Add a Spotify song link first.' });
+  await entries.updateOne({ _id: id }, { $set: { spotifyTrack, spotifyTrackUpdatedAt: new Date(), spotifyTrackUpdatedBy: 'admin' } });
+  res.json({ spotifyTrack });
+});
+
+app.delete('/api/admin/items/:id/spotify-track', requireAdmin, async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
+  await entries.updateOne({ _id: new ObjectId(req.params.id) }, { $unset: { spotifyTrack: '', spotifyTrackUpdatedAt: '', spotifyTrackUpdatedBy: '' } });
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/media', requireAdmin, uploadLimiter, memoryUpload.single('file'), async (req, res) => {
   const entry = await saveMedia(systemGalleryId, req);
   res.status(201).json({ item: cleanEntry(entry) });
@@ -882,7 +954,7 @@ app.get('/api/story/:token', async (req, res) => {
   }
   const docs = await entries.find(query).sort({ createdAt: -1 }).toArray();
   res.set('Cache-Control', 'no-store');
-  res.json({ story: { title: storyConfig.title, subtitle: storyConfig.subtitle, message: storyConfig.message }, items: docs.map((entry) => ({
+  res.json({ story: { title: storyConfig.title, subtitle: storyConfig.subtitle, message: storyConfig.message, spotifyTrack: storyConfig.spotifyTrack || null }, items: docs.map((entry) => ({
     ...cleanEntry(entry),
     mediaUrl: entry.publicId ? `/api/story/${encodeURIComponent(req.params.token)}/media/${entry._id}` : null,
     ownerName: ownerNames.get(entry.ownerId.toString()) || 'Admin'

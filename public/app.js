@@ -141,6 +141,38 @@ function makeButton(label, className, action) {
 function addMemoryTools(container, item) {
   const actions = document.createElement('div');
   actions.className = 'memory-actions memory-tools-row';
+  if ((item.kind === 'image' || item.kind === 'video') && item.spotifyTrack) {
+    const listen = document.createElement('a');
+    listen.className = 'memory-tool-button'; listen.href = item.spotifyTrack.url;
+    listen.target = '_blank'; listen.rel = 'noopener noreferrer';
+    listen.textContent = `♫ Listen · ${item.spotifyTrack.title}`;
+    actions.append(listen);
+  }
+  if ((item.kind === 'image' || item.kind === 'video') && item.canDelete && document.body.dataset.signedIn === 'true') {
+    const songForm = document.createElement('form');
+    songForm.className = 'memory-song-form member-memory-song-form';
+    const songInput = document.createElement('input');
+    songInput.type = 'url'; songInput.maxLength = 500; songInput.required = true;
+    songInput.placeholder = item.spotifyTrack ? 'Change Spotify song link' : 'Add Spotify song link';
+    songInput.setAttribute('aria-label', 'Spotify song link for this memory');
+    const saveSong = document.createElement('button');
+    saveSong.type = 'submit'; saveSong.textContent = item.spotifyTrack ? 'Change song' : 'Add song';
+    songForm.append(songInput, saveSong);
+    songForm.addEventListener('submit', async (event) => {
+      event.preventDefault(); saveSong.disabled = true;
+      try {
+        await api(`/api/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: songInput.value.trim() }) });
+        await loadItems(); setNotice($('#dashboard-error'), 'Spotify song saved with this memory.');
+      } catch (error) { setNotice($('#dashboard-error'), error.message); saveSong.disabled = false; }
+    });
+    actions.append(songForm);
+    if (item.spotifyTrack) {
+      actions.append(makeButton('Remove song', 'memory-tool-button', async () => {
+        try { await api(`/api/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'DELETE' }); await loadItems(); setNotice($('#dashboard-error'), 'Song removed from this memory.'); }
+        catch (error) { setNotice($('#dashboard-error'), error.message); }
+      }));
+    }
+  }
   if (item.mediaUrl) {
     const download = document.createElement('a');
     download.className = 'memory-tool-button';

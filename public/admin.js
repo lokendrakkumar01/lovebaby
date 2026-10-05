@@ -183,6 +183,47 @@ function renderMemories() {
     caption.className = 'admin-memory-caption';
     caption.textContent = item.kind === 'note' ? item.text : (item.caption || (item.kind === 'video' ? 'Video memory' : 'Photo memory'));
     body.append(caption);
+    if (item.kind === 'image' || item.kind === 'video') {
+      const songPanel = document.createElement('div');
+      songPanel.className = 'memory-song-panel';
+      if (item.spotifyTrack) {
+        const current = document.createElement('a');
+        current.href = item.spotifyTrack.url;
+        current.target = '_blank';
+        current.rel = 'noopener noreferrer';
+        current.textContent = `♫ ${item.spotifyTrack.title} · Open on Spotify`;
+        songPanel.append(current);
+      }
+      if (!item.adminHidden) {
+        const form = document.createElement('form');
+        form.className = 'memory-song-form';
+        const input = document.createElement('input');
+        input.type = 'url'; input.maxLength = 500; input.required = true;
+        input.placeholder = 'Spotify track link'; input.setAttribute('aria-label', 'Spotify track link');
+        const saveSong = document.createElement('button');
+        saveSong.type = 'submit'; saveSong.textContent = item.spotifyTrack ? 'Change song' : 'Add song';
+        form.append(input, saveSong);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault(); saveSong.disabled = true;
+          try {
+            const result = await api(`/api/admin/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: input.value.trim() }) });
+            item.spotifyTrack = result.spotifyTrack; renderMemories(); notice($('#admin-notice'), 'Spotify song added to this memory.');
+          } catch (error) { notice($('#admin-notice'), error.message); saveSong.disabled = false; }
+        });
+        songPanel.append(form);
+      }
+      if (item.spotifyTrack) {
+        const clearSong = document.createElement('button');
+        clearSong.type = 'button'; clearSong.className = 'quiet'; clearSong.textContent = 'Remove song';
+        clearSong.addEventListener('click', async () => {
+          clearSong.disabled = true;
+          try { await api(`/api/admin/items/${encodeURIComponent(item.id)}/spotify-track`, { method: 'DELETE' }); item.spotifyTrack = null; renderMemories(); notice($('#admin-notice'), 'Song removed from memory.'); }
+          catch (error) { notice($('#admin-notice'), error.message); clearSong.disabled = false; }
+        });
+        songPanel.append(clearSong);
+      }
+      body.append(songPanel);
+    }
     if (item.adminHidden) {
       const hiddenNotice = document.createElement('div');
       hiddenNotice.className = 'admin-hidden-badge';
@@ -318,6 +359,7 @@ function storyPayload() {
     title: $('#story-title').value.trim(),
     subtitle: $('#story-subtitle').value.trim(),
     message: $('#story-message').value.trim(),
+    spotifyTrackUrl: $('#story-song-url').value.trim(),
     memoryIds: storyMemoryIds
   };
 }
@@ -339,6 +381,7 @@ async function loadStory() {
   $('#story-title').value = story.title || 'Love My Jaan';
   $('#story-subtitle').value = story.subtitle || '';
   $('#story-message').value = story.message || '';
+  $('#story-song-url').value = story.spotifyTrack?.url || '';
   storyMemoryIds = Array.isArray(story.memoryIds) ? story.memoryIds : null;
   showStoryLink(data.url);
   renderMemories();

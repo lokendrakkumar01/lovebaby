@@ -772,6 +772,13 @@ function renderStoryMemories(items) {
                 copy.append(time);
             }
         }
+        if (item.spotifyTrack?.url) {
+            const song = storyText('a', 'story-memory-action', `♫ Listen · ${item.spotifyTrack.title || 'Spotify'}`);
+            song.href = item.spotifyTrack.url;
+            song.target = '_blank';
+            song.rel = 'noopener noreferrer';
+            copy.append(song);
+        }
         const actions = document.createElement('div');
         actions.className = 'story-memory-actions';
         if (item.mediaUrl) {
@@ -851,6 +858,20 @@ async function loadStoryMemories() {
         message.hidden = !story.message;
         const description = story.subtitle || 'Every photo, video and message, together.';
         document.getElementById('storySubtitle').textContent = `${description} · ${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'}`;
+        const player = document.getElementById('story-spotify-track');
+        player.replaceChildren();
+        if (story.spotifyTrack?.id) {
+            player.hidden = false;
+            player.append(storyText('h3', 'story-spotify-title', 'A song for this story'));
+            player.append(storyText('p', 'story-spotify-note', 'Optional Spotify player · tap play when you want to listen.'));
+            const frame = document.createElement('iframe');
+            frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(story.spotifyTrack.id)}?utm_source=generator`;
+            frame.title = `Spotify track: ${story.spotifyTrack.title || 'Story song'}`;
+            frame.loading = 'lazy'; frame.allowFullscreen = true;
+            frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+            frame.referrerPolicy = 'strict-origin-when-cross-origin';
+            player.append(frame);
+        } else player.hidden = true;
     } catch (error) {
         storyError.textContent = error.message;
     }
