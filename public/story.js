@@ -772,15 +772,38 @@ function renderStoryMemories(items) {
                 copy.append(time);
             }
         }
-        if (item.spotifyTrack?.url) {
-            const song = storyText('a', 'story-memory-action', `♫ Listen · ${item.spotifyTrack.title || 'Spotify'}`);
-            song.href = item.spotifyTrack.url;
-            song.target = '_blank';
-            song.rel = 'noopener noreferrer';
-            copy.append(song);
-        }
         const actions = document.createElement('div');
         actions.className = 'story-memory-actions';
+        if (item.spotifyTrack?.id) {
+            const songButton = storyText('button', 'story-memory-action story-song-button', `♫ Play song · ${item.spotifyTrack.title || 'Spotify'}`);
+            songButton.type = 'button';
+            songButton.setAttribute('aria-expanded', 'false');
+            const songPlayer = document.createElement('div');
+            songPlayer.className = 'story-memory-spotify';
+            songPlayer.hidden = true;
+            songButton.addEventListener('click', () => {
+                if (songPlayer.hidden) {
+                    songPlayer.hidden = false;
+                    if (!songPlayer.firstChild) {
+                        const frame = document.createElement('iframe');
+                        frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(item.spotifyTrack.id)}?utm_source=generator`;
+                        frame.title = `Spotify track: ${item.spotifyTrack.title || 'Memory song'}`;
+                        frame.loading = 'lazy'; frame.allowFullscreen = true;
+                        frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+                        frame.referrerPolicy = 'strict-origin-when-cross-origin';
+                        songPlayer.append(frame);
+                    }
+                    songButton.setAttribute('aria-expanded', 'true');
+                    songButton.textContent = `♫ Hide player · ${item.spotifyTrack.title || 'Spotify'}`;
+                } else {
+                    songPlayer.hidden = true;
+                    songButton.setAttribute('aria-expanded', 'false');
+                    songButton.textContent = `♫ Play song · ${item.spotifyTrack.title || 'Spotify'}`;
+                }
+            });
+            actions.append(songButton);
+            copy.append(songPlayer);
+        }
         if (item.mediaUrl) {
             const view = storyText('button', 'story-memory-action', item.kind === 'video' ? '⛶ View video' : '⛶ View photo');
             view.type = 'button';
@@ -860,13 +883,14 @@ async function loadStoryMemories() {
         document.getElementById('storySubtitle').textContent = `${description} · ${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'}`;
         const player = document.getElementById('story-spotify-track');
         player.replaceChildren();
-        if (story.spotifyTrack?.id) {
+        const storyTrack = story.spotifyTrack || data.items.find((item) => item.spotifyTrack?.id)?.spotifyTrack;
+        if (storyTrack?.id) {
             player.hidden = false;
-            player.append(storyText('h3', 'story-spotify-title', 'A song for this story'));
-            player.append(storyText('p', 'story-spotify-note', 'Optional Spotify player · tap play when you want to listen.'));
+            player.append(storyText('h3', 'story-spotify-title', story.spotifyTrack ? 'A song for this story' : 'Songs from your memories'));
+            player.append(storyText('p', 'story-spotify-note', 'Spotify player · press play when you want to listen.'));
             const frame = document.createElement('iframe');
-            frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(story.spotifyTrack.id)}?utm_source=generator`;
-            frame.title = `Spotify track: ${story.spotifyTrack.title || 'Story song'}`;
+            frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(storyTrack.id)}?utm_source=generator`;
+            frame.title = `Spotify track: ${storyTrack.title || 'Story song'}`;
             frame.loading = 'lazy'; frame.allowFullscreen = true;
             frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
             frame.referrerPolicy = 'strict-origin-when-cross-origin';
