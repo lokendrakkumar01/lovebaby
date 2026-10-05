@@ -134,6 +134,54 @@ function randomItem(array){
 ========================================================= */
 
 let opened = false;
+let loveAudio = null;
+let loveTuneTimer = null;
+let loveTuneStep = 0;
+let loveTuneEnabled = true;
+const loveTuneNotes = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46, 523.25, 587.33, 659.25, 783.99, 698.46, 659.25, 587.33, 523.25];
+
+function playLoveNote() {
+    if (!loveAudio || !loveTuneEnabled || document.hidden) return;
+    const now = loveAudio.currentTime;
+    const oscillator = loveAudio.createOscillator();
+    const volume = loveAudio.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = loveTuneNotes[loveTuneStep++ % loveTuneNotes.length];
+    volume.gain.setValueAtTime(0.0001, now);
+    volume.gain.exponentialRampToValueAtTime(0.028, now + 0.055);
+    volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    oscillator.connect(volume);
+    volume.connect(loveAudio.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.44);
+}
+
+async function startLoveTune() {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        loveAudio ||= new AudioContextClass();
+        await loveAudio.resume();
+        clearInterval(loveTuneTimer);
+        playLoveNote();
+        loveTuneTimer = setInterval(playLoveNote, 380);
+    } catch { /* Browsers without audio support still get the complete story. */ }
+}
+
+function setLoveTune(enabled) {
+    loveTuneEnabled = enabled;
+    const control = document.getElementById('music-toggle');
+    control.setAttribute('aria-pressed', String(enabled));
+    control.textContent = enabled ? '♫ Pause tune' : '♫ Play tune';
+    if (enabled && opened) startLoveTune();
+    else clearInterval(loveTuneTimer);
+}
+
+document.getElementById('music-toggle').addEventListener('click', () => setLoveTune(!loveTuneEnabled));
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearInterval(loveTuneTimer);
+    else if (opened && loveTuneEnabled) startLoveTune();
+});
 
 gift.addEventListener(
     "click",
@@ -158,6 +206,7 @@ function openGift(){
         return;
 
     opened = true;
+    if (loveTuneEnabled) startLoveTune();
 
 
     /* gift animation */
@@ -945,17 +994,20 @@ const ctx =
 
 
 let particles = [];
+const storyDpr = Math.min(window.devicePixelRatio || 1, 1.5);
+const reduceStoryMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let particleAnimationRunning = false;
 
 
 function resizeCanvas(){
 
     canvas.width =
         window.innerWidth *
-        window.devicePixelRatio;
+        storyDpr;
 
     canvas.height =
         window.innerHeight *
-        window.devicePixelRatio;
+        storyDpr;
 
 
     canvas.style.width =
@@ -966,7 +1018,7 @@ function resizeCanvas(){
 
 
     ctx.setTransform(
-        window.devicePixelRatio,
+        storyDpr,
         0,
         0,
         window.devicePixelRatio,
@@ -988,11 +1040,7 @@ window.addEventListener(
 
 /* create particles */
 
-for(
-    let i=0;
-    i<90;
-    i++
-){
+for(let i=0, particleCount=window.innerWidth<700?30:56; i<particleCount; i++){
 
     particles.push({
 
@@ -1024,6 +1072,12 @@ for(
 /* animate */
 
 function animateParticles(){
+
+    if(document.hidden || reduceStoryMotion){
+        particleAnimationRunning = false;
+        return;
+    }
+    particleAnimationRunning = true;
 
     ctx.clearRect(
         0,
@@ -1086,14 +1140,15 @@ function animateParticles(){
     );
 
 
-    requestAnimationFrame(
-        animateParticles
-    );
+    requestAnimationFrame(animateParticles);
 
 }
 
 
-animateParticles();
+if(!reduceStoryMotion) animateParticles();
+document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden && !reduceStoryMotion && !particleAnimationRunning) animateParticles();
+});
 
 
 /* =========================================================

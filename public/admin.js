@@ -193,8 +193,8 @@ function renderMemories() {
     storyChoice.className = 'story-memory-choice';
     const storyCheckbox = document.createElement('input');
     storyCheckbox.type = 'checkbox';
-    storyCheckbox.checked = item.storyEligible && (storyMemoryIds === null || storyMemoryIds.includes(item.id));
-    storyCheckbox.disabled = !item.storyEligible && !storyCheckbox.checked;
+    storyCheckbox.checked = !item.adminHidden && item.storyEligible && (storyMemoryIds === null || storyMemoryIds.includes(item.id));
+    storyCheckbox.disabled = item.adminHidden || !item.storyEligible;
     storyCheckbox.setAttribute('aria-label', `Include ${item.caption || item.text || 'memory'} in the love story`);
     storyCheckbox.addEventListener('change', () => {
       if (storyMemoryIds === null) storyMemoryIds = memories.filter((memory) => memory.storyEligible).map((memory) => memory.id);
@@ -203,7 +203,7 @@ function renderMemories() {
         : storyMemoryIds.filter((id) => id !== item.id);
       notice($('#story-link-status'), 'Memory selection changed. Save the story to apply it to the link.');
     });
-    storyChoice.append(storyCheckbox, document.createTextNode(item.storyEligible ? ' Include in story' : ' Not available in public story'));
+    storyChoice.append(storyCheckbox, document.createTextNode(item.adminHidden ? ' Hidden from public story' : (item.storyEligible ? ' Include in story' : ' Not available in public story')));
     body.append(storyChoice);
     if (item.createdAt) {
       const date = document.createElement('time');
@@ -383,6 +383,11 @@ document.querySelectorAll('.admin-tabs button').forEach((button) => button.addEv
   document.querySelectorAll('.admin-view').forEach((view) => view.classList.toggle('hidden', view.id !== button.dataset.view));
 }));
 $('#memory-search').addEventListener('input', renderMemories);
+$('#story-select-all').addEventListener('click', () => {
+  storyMemoryIds = null;
+  renderMemories();
+  notice($('#story-link-status'), 'All eligible photos, videos and notes are selected. Save the story to apply this selection.');
+});
 
 $('#clear-background').addEventListener('click', async (event) => {
   const button = event.currentTarget;
