@@ -10,7 +10,7 @@
 
 <title>My Jaan 💗</title>
 
-<link rel="stylesheet" href="/story.css?v=romantic-cinema-1">
+<link rel="stylesheet" href="/story.css?v=love-video-1">
 </head>
 
 
@@ -244,7 +244,13 @@
 </main>
 <section class="story-spotify-player" id="story-spotify-track" aria-label="Story music" hidden></section>
 <section class="story-gallery" id="memoryWall" aria-labelledby="memoryHeading" hidden>
-  <header class="story-gallery-head"><span class="story-gallery-kicker">MADE OF MOMENTS · KEPT WITH LOVE</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p><div class="story-gallery-actions"><button class="story-film-launch" id="story-film-launch" type="button"><span aria-hidden="true">▶</span><span><strong>Watch our story</strong><small>A little film of all our moments</small></span><span class="story-film-launch-arrow" aria-hidden="true">↗</span></button><a class="story-gallery-jump" href="#story-filters">Explore the full gallery <span aria-hidden="true">↓</span></a></div></header>
+  <header class="story-gallery-head"><span class="story-gallery-kicker">MADE OF MOMENTS · KEPT WITH LOVE</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p><div class="story-gallery-actions"><button class="story-film-launch" id="story-film-launch" type="button"><span aria-hidden="true">▶</span><span><strong>Watch our story</strong><small>A little film of all our moments</small></span><span class="story-film-launch-arrow" aria-hidden="true">↗</span></button><button class="story-movie-launch" id="story-movie-launch" type="button"><span aria-hidden="true">✦</span><span><strong>Make one love video</strong><small>All photos and videos · love tone included</small></span></button><a class="story-gallery-jump" href="#story-filters">Explore the full gallery <span aria-hidden="true">↓</span></a></div></header>
+  <section class="story-video-studio" id="story-video-studio" aria-label="Create a video from our memories" hidden>
+    <div class="story-video-studio-head"><div><span class="story-film-overline">YOUR MOMENTS, TOGETHER</span><h3>Our little love film</h3><p id="story-video-status" role="status" aria-live="polite">Choose “Make one love video” to create your keepsake.</p></div><span class="story-video-studio-mark" aria-hidden="true">♫</span></div>
+    <progress id="story-video-progress" max="100" value="0" aria-label="Love video creation progress"></progress>
+    <video id="story-video-preview" controls playsinline preload="metadata" hidden></video>
+    <div class="story-video-actions" id="story-video-actions" hidden><a class="story-film-action" id="story-video-download" download="our-love-story.webm">↓ Download video</a><button class="story-film-action" id="story-video-share" type="button" hidden>↗ Share video</button></div>
+  </section>
   <nav class="story-filters" id="story-filters" aria-label="Filter story memories">
     <button type="button" data-story-filter="all" aria-pressed="true">All</button>
     <button type="button" data-story-filter="image" aria-pressed="false">Photos</button>
@@ -268,7 +274,7 @@
   </div>
 </section>
 
-<script src="/story.js?v=romantic-cinema-1" defer></script>
+<script src="/story.js?v=love-video-1" defer></script>
 
 </body>
 </html>
