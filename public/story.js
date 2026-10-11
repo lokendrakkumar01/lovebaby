@@ -687,6 +687,216 @@ const storyError = document.getElementById('story-error');
 const storyItems = [];
 let activeStoryFilter = 'all';
 let storyViewerFocus = null;
+let filmItems = [];
+let filmIndex = 0;
+let filmPlaying = false;
+let filmTimer = null;
+let filmStartedAt = 0;
+let filmRemaining = 0;
+let filmDuration = 0;
+let filmFocus = null;
+let filmVideo = null;
+let filmStoryMessage = '';
+
+const filmDialog = document.getElementById('story-film');
+const filmStage = document.getElementById('story-film-stage');
+const filmProgress = document.getElementById('story-film-progress');
+
+function closeStoryFilm() {
+    if (filmDialog.hidden) return;
+    clearTimeout(filmTimer);
+    filmTimer = null;
+    if (filmVideo) { filmVideo.pause(); filmVideo.removeAttribute('src'); filmVideo.load(); }
+    filmVideo = null;
+    filmPlaying = false;
+    filmDialog.hidden = true;
+    document.body.classList.remove('story-film-open');
+    filmFocus?.focus?.();
+}
+
+function setFilmClock(duration, resume = false) {
+    clearTimeout(filmTimer);
+    if (!resume) filmRemaining = duration;
+    filmStartedAt = performance.now();
+    filmDuration = duration;
+    filmPlaying = true;
+    filmDialog.classList.remove('is-paused');
+    filmTimer = setTimeout(() => showFilmItem(filmIndex + 1), filmRemaining);
+    document.getElementById('story-film-play').textContent = 'Ⅱ';
+    document.getElementById('story-film-play').setAttribute('aria-label', 'Pause story');
+}
+
+function makeFilmProgress(activeIndex) {
+    filmProgress.replaceChildren();
+    filmItems.forEach((_item, index) => {
+        const segment = document.createElement('i');
+        if (index < activeIndex) segment.className = 'is-complete';
+        if (index === activeIndex) {
+            segment.className = 'is-active';
+            segment.style.setProperty('--film-duration', `${filmDuration}ms`);
+            if (!filmPlaying) segment.classList.add('is-paused');
+        }
+        filmProgress.append(segment);
+    });
+}
+
+function showFilmItem(index) {
+    clearTimeout(filmTimer);
+    filmTimer = null;
+    if (filmVideo) { filmVideo.pause(); filmVideo.removeAttribute('src'); filmVideo.load(); filmVideo = null; }
+    filmIndex = index;
+    filmPlaying = true;
+    filmDialog.classList.remove('is-paused');
+    filmStage.replaceChildren();
+    document.getElementById('story-film-actions').replaceChildren();
+    const caption = document.getElementById('story-film-caption');
+    const byline = document.getElementById('story-film-byline');
+    const overline = document.getElementById('story-film-overline');
+    const playButton = document.getElementById('story-film-play');
+    if (index >= filmItems.length) {
+        filmPlaying = false;
+        filmProgress.replaceChildren();
+        document.getElementById('story-film-counter').textContent = 'THE END · AND A NEW BEGINNING';
+        overline.textContent = 'TO BE CONTINUED';
+        caption.textContent = filmStoryMessage || 'Here’s to every little moment still waiting for us.';
+        byline.textContent = 'Made with love, just for you';
+        filmStage.append(storyText('div', 'story-film-finale', '♡'));
+        playButton.textContent = '↻';
+        playButton.setAttribute('aria-label', 'Play story again');
+        return;
+    }
+
+    const item = filmItems[index];
+    document.getElementById('story-film-counter').textContent = `${String(index + 1).padStart(2, '0')} / ${String(filmItems.length).padStart(2, '0')}`;
+    overline.textContent = item.kind === 'video' ? 'A MOMENT IN MOTION' : item.kind === 'note' ? 'WORDS TO KEEP CLOSE' : 'A MOMENT TO KEEP';
+    caption.textContent = item.kind === 'note' ? item.text : item.caption || (item.kind === 'video' ? 'A little moment in motion' : 'A little moment, kept forever');
+    byline.textContent = item.ownerName ? `Shared by ${item.ownerName}` : item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { dateStyle: 'long' }) : 'With all my love';
+    if (item.kind === 'note') {
+        filmStage.append(storyText('blockquote', 'story-film-note', `“${item.text}”`));
+    } else {
+        const media = document.createElement(item.kind === 'video' ? 'video' : 'img');
+        media.className = 'story-film-media';
+        media.src = item.mediaUrl;
+        media.alt = item.caption || 'A memory shared with love';
+        if (item.kind === 'video') {
+            media.controls = true;
+            media.playsInline = true;
+            media.preload = 'metadata';
+            media.addEventListener('ended', () => { if (filmPlaying) showFilmItem(filmIndex + 1); }, { once: true });
+            media.addEventListener('error', () => { filmStage.append(storyText('p', 'story-film-media-error', 'This video could not be loaded. You can continue to the next memory.')); }, { once: true });
+            media.addEventListener('play', () => { filmPlaying = true; document.getElementById('story-film-play').textContent = 'Ⅱ'; document.getElementById('story-film-play').setAttribute('aria-label', 'Pause video'); });
+            media.addEventListener('pause', () => { filmPlaying = false; document.getElementById('story-film-play').textContent = '▶'; document.getElementById('story-film-play').setAttribute('aria-label', 'Play video'); });
+            filmVideo = media;
+        } else {
+            media.decoding = 'async';
+            media.addEventListener('error', () => { media.replaceWith(storyText('p', 'story-film-media-error', 'This photo could not be loaded.')); }, { once: true });
+        }
+        filmStage.append(media);
+    }
+
+    const actions = document.getElementById('story-film-actions');
+    if (item.spotifyTrack?.id) {
+        const songButton = storyText('button', 'story-film-action', '♫ Listen to this moment');
+        songButton.type = 'button';
+        songButton.addEventListener('click', () => {
+            const frame = document.createElement('iframe');
+            frame.src = `https://open.spotify.com/embed/track/${encodeURIComponent(item.spotifyTrack.id)}?utm_source=generator`;
+            frame.title = `Spotify track: ${item.spotifyTrack.title || 'Memory song'}`;
+            frame.loading = 'lazy';
+            frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+            frame.referrerPolicy = 'strict-origin-when-cross-origin';
+            actions.replaceChildren(frame);
+            songButton.textContent = `♫ ${item.spotifyTrack.title || 'Memory song'}`;
+            actions.prepend(songButton);
+        });
+        actions.append(songButton);
+    }
+    if (item.mediaUrl) {
+        const download = storyText('a', 'story-film-action', '↓ Save this memory');
+        download.href = `${item.mediaUrl}?download=1`;
+        download.download = `memory-${item.id}`;
+        actions.append(download);
+    }
+
+    document.getElementById('story-film-prev').disabled = index === 0;
+    playButton.textContent = 'Ⅱ';
+    playButton.setAttribute('aria-label', 'Pause story');
+    if (item.kind === 'video') {
+        filmDuration = 0;
+        filmProgress.replaceChildren();
+        filmPlaying = false;
+        playButton.textContent = '▶';
+        playButton.setAttribute('aria-label', 'Play video');
+        mediaPlayVideo(filmVideo, playButton);
+    } else {
+        setFilmClock(item.kind === 'note' ? 9000 : 7000);
+        makeFilmProgress(index);
+    }
+}
+
+async function mediaPlayVideo(video, button) {
+    try {
+        await video.play();
+        filmPlaying = true;
+        button.textContent = 'Ⅱ';
+        button.setAttribute('aria-label', 'Pause video');
+    } catch {
+        filmPlaying = false;
+        button.textContent = '▶';
+        button.setAttribute('aria-label', 'Play video');
+    }
+}
+
+function startStoryFilm() {
+    filmItems = storyItems.filter((item) => item.kind === 'image' || item.kind === 'video' || item.kind === 'note');
+    if (!filmItems.length) return;
+    filmFocus = document.activeElement;
+    filmIndex = 0;
+    filmDialog.hidden = false;
+    document.body.classList.add('story-film-open');
+    showFilmItem(0);
+    document.getElementById('story-film-close').focus();
+}
+
+function toggleStoryFilm() {
+    if (filmIndex >= filmItems.length) { startStoryFilm(); return; }
+    const button = document.getElementById('story-film-play');
+    if (filmVideo) {
+        if (filmVideo.paused) mediaPlayVideo(filmVideo, button);
+        else { filmVideo.pause(); filmPlaying = false; button.textContent = '▶'; button.setAttribute('aria-label', 'Play video'); }
+        return;
+    }
+    if (filmPlaying) {
+        clearTimeout(filmTimer);
+        filmRemaining = Math.max(0, filmRemaining - (performance.now() - filmStartedAt));
+        filmPlaying = false;
+        filmDialog.classList.add('is-paused');
+        button.textContent = '▶';
+        button.setAttribute('aria-label', 'Resume story');
+    } else {
+        setFilmClock(filmRemaining, true);
+    }
+}
+
+document.getElementById('story-film-launch').addEventListener('click', startStoryFilm);
+document.getElementById('story-film-close').addEventListener('click', closeStoryFilm);
+document.getElementById('story-film-prev').addEventListener('click', () => showFilmItem(Math.max(0, filmIndex - 1)));
+document.getElementById('story-film-next').addEventListener('click', () => showFilmItem(filmIndex >= filmItems.length ? 0 : filmIndex + 1));
+document.getElementById('story-film-play').addEventListener('click', toggleStoryFilm);
+document.addEventListener('keydown', (event) => {
+    if (filmDialog.hidden) return;
+    if (event.key === 'Escape') { closeStoryFilm(); return; }
+    if (event.key === 'ArrowLeft') { event.preventDefault(); showFilmItem(Math.max(0, filmIndex - 1)); }
+    if (event.key === 'ArrowRight') { event.preventDefault(); showFilmItem(filmIndex >= filmItems.length ? 0 : filmIndex + 1); }
+    if (event.key === ' ' && !['BUTTON', 'A', 'IFRAME'].includes(document.activeElement?.tagName)) { event.preventDefault(); toggleStoryFilm(); }
+});
+filmStage.addEventListener('touchstart', (event) => { filmStage.dataset.touchX = String(event.changedTouches[0]?.clientX || 0); }, { passive: true });
+filmStage.addEventListener('touchend', (event) => {
+    const startX = Number(filmStage.dataset.touchX || 0);
+    const delta = (event.changedTouches[0]?.clientX || startX) - startX;
+    if (Math.abs(delta) < 55) return;
+    showFilmItem(delta < 0 ? Math.min(filmItems.length, filmIndex + 1) : Math.max(0, filmIndex - 1));
+}, { passive: true });
 
 function storyText(tag, className, value) {
     const element = document.createElement(tag);
@@ -874,6 +1084,10 @@ async function loadStoryMemories() {
         storyItems.splice(0, storyItems.length, ...(data.items || []));
         applyStoryFilter(activeStoryFilter);
         const story = data.story || {};
+        filmStoryMessage = story.message || '';
+        const filmLaunch = document.getElementById('story-film-launch');
+        filmLaunch.disabled = storyItems.length === 0;
+        filmLaunch.querySelector('small').textContent = storyItems.length ? `${storyItems.length} little ${storyItems.length === 1 ? 'moment' : 'moments'}, one story` : 'Memories will appear here when they are added';
         const title = document.querySelector('.title');
         if (title && story.title) { title.textContent = story.title; document.title = `${story.title} 💗`; }
         const message = document.getElementById('storyMessage');
