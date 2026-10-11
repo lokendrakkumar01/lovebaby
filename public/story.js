@@ -942,7 +942,9 @@ function drawMovieFrame(ctx, media, item, itemIndex, itemCount, videoSource = fa
 }
 
 function waitForMedia(media, eventName) {
-    if ((media instanceof HTMLImageElement && media.complete && media.naturalWidth) || (media instanceof HTMLVideoElement && media.readyState >= 2)) return Promise.resolve();
+    if (media instanceof HTMLImageElement && media.complete) return media.naturalWidth ? Promise.resolve() : Promise.reject(new Error('A photo could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.'));
+    if (media instanceof HTMLVideoElement && media.error) return Promise.reject(new Error('A video could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.'));
+    if (media instanceof HTMLVideoElement && media.readyState >= 2) return Promise.resolve();
     return new Promise((resolve, reject) => {
         const cleanup = () => { media.removeEventListener(eventName, onReady); media.removeEventListener('error', onError); };
         const onReady = () => { cleanup(); resolve(); };
