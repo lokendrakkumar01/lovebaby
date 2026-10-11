@@ -4,14 +4,13 @@
 
 <meta charset="UTF-8">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#140b16">
+<meta name="description" content="A little cinematic story made from the moments we keep close.">
 
 <title>My Jaan 💗</title>
 
-<link rel="stylesheet" href="/story.css?v=story-spotify-2">
+<link rel="stylesheet" href="/story.css?v=romantic-cinema-1">
 </head>
 
 
@@ -245,7 +244,7 @@
 </main>
 <section class="story-spotify-player" id="story-spotify-track" aria-label="Story music" hidden></section>
 <section class="story-gallery" id="memoryWall" aria-labelledby="memoryHeading" hidden>
-  <header class="story-gallery-head"><span class="story-gallery-kicker">A COLLECTION OF LITTLE MOMENTS</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p></header>
+  <header class="story-gallery-head"><span class="story-gallery-kicker">MADE OF MOMENTS · KEPT WITH LOVE</span><h2 id="memoryHeading">Our memories <span>♡</span></h2><p id="storySubtitle">Every photo, video and message, together.</p><div class="story-gallery-actions"><button class="story-film-launch" id="story-film-launch" type="button"><span aria-hidden="true">▶</span><span><strong>Watch our story</strong><small>A little film of all our moments</small></span><span class="story-film-launch-arrow" aria-hidden="true">↗</span></button><a class="story-gallery-jump" href="#story-filters">Explore the full gallery <span aria-hidden="true">↓</span></a></div></header>
   <nav class="story-filters" id="story-filters" aria-label="Filter story memories">
     <button type="button" data-story-filter="all" aria-pressed="true">All</button>
     <button type="button" data-story-filter="image" aria-pressed="false">Photos</button>
@@ -260,8 +259,16 @@
   <div class="story-viewer-content" id="story-viewer-content"></div>
 </div>
 
+<section class="story-film" id="story-film" role="dialog" aria-modal="true" aria-label="Cinematic memory story" aria-live="polite" hidden>
+  <div class="story-film-shell">
+    <header class="story-film-top"><div class="story-film-brand"><span class="story-film-mark">♡</span><span><strong>Our little film</strong><small id="story-film-counter">A story made of moments</small></span></div><button class="story-film-close" id="story-film-close" type="button" aria-label="Close story film">×</button></header>
+    <div class="story-film-progress" id="story-film-progress" aria-hidden="true"></div>
+    <main class="story-film-stage" id="story-film-stage"></main>
+    <footer class="story-film-bottom"><div class="story-film-copy"><span class="story-film-overline" id="story-film-overline">A MOMENT TO KEEP</span><p class="story-film-caption" id="story-film-caption"></p><small class="story-film-byline" id="story-film-byline"></small></div><div class="story-film-actions" id="story-film-actions"></div><div class="story-film-controls"><button id="story-film-prev" type="button" aria-label="Previous memory">‹</button><button class="story-film-play" id="story-film-play" type="button" aria-label="Pause story">Ⅱ</button><button id="story-film-next" type="button" aria-label="Next memory">›</button></div></footer>
+  </div>
+</section>
 
-<script src="/story.js?v=story-spotify-2" defer></script>
+<script src="/story.js?v=romantic-cinema-1" defer></script>
 
 </body>
 </html>
