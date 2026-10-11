@@ -898,6 +898,144 @@ filmStage.addEventListener('touchend', (event) => {
     showFilmItem(delta < 0 ? Math.min(filmItems.length, filmIndex + 1) : Math.max(0, filmIndex - 1));
 }, { passive: true });
 
+/* Build a shareable keepsake movie locally in the browser. */
+const movieButton = document.getElementById('story-movie-launch');
+const movieStudio = document.getElementById('story-video-studio');
+const movieStatus = document.getElementById('story-video-status');
+const movieProgress = document.getElementById('story-video-progress');
+const movieCanvas = document.createElement('canvas');
+movieCanvas.width = 720;
+movieCanvas.height = 1280;
+let movieUrl = '';
+let movieBusy = false;
+
+function movieSleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function movieFrame() { return new Promise((resolve) => requestAnimationFrame(resolve)); }
+
+function drawMovieFrame(ctx, media, item, itemIndex, itemCount, videoSource = false) {
+    const { width, height } = movieCanvas;
+    const background = ctx.createLinearGradient(0, 0, width, height);
+    background.addColorStop(0, '#3a102d'); background.addColorStop(.52, '#180f20'); background.addColorStop(1, '#100b17');
+    ctx.fillStyle = background; ctx.fillRect(0, 0, width, height);
+    if (media?.videoWidth || media?.naturalWidth) {
+        const sourceWidth = media.videoWidth || media.naturalWidth;
+        const sourceHeight = media.videoHeight || media.naturalHeight;
+        const scale = Math.min((width - 56) / sourceWidth, (height * .72) / sourceHeight);
+        const drawWidth = sourceWidth * scale; const drawHeight = sourceHeight * scale;
+        ctx.save(); ctx.shadowColor = '#0009'; ctx.shadowBlur = 28;
+        ctx.drawImage(media, (width - drawWidth) / 2, (height * .7 - drawHeight) / 2 + 25, drawWidth, drawHeight);
+        ctx.restore();
+    }
+    const shade = ctx.createLinearGradient(0, height * .63, 0, height);
+    shade.addColorStop(0, '#100b1700'); shade.addColorStop(.25, '#100b17d9'); shade.addColorStop(1, '#100b17');
+    ctx.fillStyle = shade; ctx.fillRect(0, height * .62, width, height * .38);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#ff9fbe'; ctx.font = '600 20px system-ui';
+    ctx.fillText('A LITTLE STORY · KEPT WITH LOVE', width / 2, height - 220);
+    const caption = String(item.caption || (videoSource ? 'A little moment in motion' : 'A little moment, kept forever')).trim();
+    ctx.fillStyle = '#fff4f8'; ctx.font = 'italic 34px Georgia, serif';
+    const words = caption.split(/\s+/); let line = ''; let lines = [];
+    for (const word of words) { const next = line ? `${line} ${word}` : word; if (ctx.measureText(next).width > width - 100 && line) { lines.push(line); line = word; } else line = next; }
+    if (line) lines.push(line);
+    lines.slice(0, 3).forEach((text, index) => ctx.fillText(text, width / 2, height - 155 + index * 43));
+    if (item.ownerName) { ctx.fillStyle = '#e8cbd7'; ctx.font = '18px system-ui'; ctx.fillText(`Shared by ${item.ownerName}`, width / 2, height - 32); }
+    ctx.fillStyle = '#ffffffa8'; ctx.font = '16px system-ui'; ctx.textAlign = 'right'; ctx.fillText(`${itemIndex + 1} / ${itemCount}`, width - 28, 42);
+}
+
+function waitForMedia(media, eventName) {
+    if ((media instanceof HTMLImageElement && media.complete && media.naturalWidth) || (media instanceof HTMLVideoElement && media.readyState >= 2)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const cleanup = () => { media.removeEventListener(eventName, onReady); media.removeEventListener('error', onError); };
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error('A photo or video could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.')); };
+        media.addEventListener(eventName, onReady, { once: true }); media.addEventListener('error', onError, { once: true });
+    });
+}
+
+async function makeLoveMovie() {
+    if (movieBusy) return;
+    const items = storyItems.filter((item) => (item.kind === 'image' || item.kind === 'video') && item.mediaUrl);
+    if (!items.length) { movieStatus.textContent = 'This story does not have any photos or videos to include yet.'; return; }
+    const Recorder = window.MediaRecorder;
+    if (!Recorder || !movieCanvas.captureStream || !(window.AudioContext || window.webkitAudioContext)) {
+        movieStatus.textContent = 'This browser cannot create a video file. Try the latest Chrome or Edge on your phone or computer.'; return;
+    }
+    movieBusy = true; movieButton.disabled = true; movieProgress.hidden = false; movieProgress.value = 0;
+    document.getElementById('story-video-actions').hidden = true;
+    const preview = document.getElementById('story-video-preview'); preview.hidden = true;
+    const ctx = movieCanvas.getContext('2d');
+    let canvasStream; let audioContext; let recorder; let image; let video; let toneTimer; let chunks = [];
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        await audioContext.resume();
+        const audioDestination = audioContext.createMediaStreamDestination();
+        let noteIndex = 0;
+        const playNote = () => {
+            const start = audioContext.currentTime;
+            const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain();
+            oscillator.type = 'sine'; oscillator.frequency.value = loveTuneNotes[noteIndex++ % loveTuneNotes.length];
+            gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(.09, start + .045); gain.gain.exponentialRampToValueAtTime(.0001, start + .5);
+            oscillator.connect(gain); gain.connect(audioDestination); oscillator.start(start); oscillator.stop(start + .52);
+        };
+        playNote(); toneTimer = setInterval(playNote, 480);
+        canvasStream = movieCanvas.captureStream(24);
+        const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()]);
+        const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((type) => Recorder.isTypeSupported(type));
+        if (!mimeType) throw new Error('This browser does not support the video format needed for the keepsake. Try Chrome or Edge.');
+        recorder = new Recorder(stream, { mimeType, videoBitsPerSecond: 3_000_000 });
+        recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+        const stopped = new Promise((resolve, reject) => { recorder.addEventListener('stop', resolve, { once: true }); recorder.addEventListener('error', () => reject(new Error('The browser stopped recording the movie. Try fewer or shorter videos.')), { once: true }); });
+        drawMovieFrame(ctx, null, {}, 0, items.length); recorder.start(1000);
+        const updateProgress = (index, fraction) => { const value = Math.min(99, Math.round(((index + fraction) / items.length) * 100)); movieProgress.value = value; movieStatus.textContent = `Creating your love film · ${index + 1} of ${items.length} · ${value}%`; };
+        for (let index = 0; index < items.length; index++) {
+            const item = items[index];
+            if (item.kind === 'image') {
+                image = new Image(); image.crossOrigin = 'anonymous'; image.src = item.mediaUrl;
+                if (!image.complete) await waitForMedia(image, 'load');
+                if (!image.naturalWidth) throw new Error('A photo could not be decoded for the movie.');
+                const start = performance.now();
+                while (performance.now() - start < 4200) { drawMovieFrame(ctx, image, item, index, items.length); updateProgress(index, Math.min(1, (performance.now() - start) / 4200)); await movieFrame(); }
+            } else {
+                video = document.createElement('video'); video.crossOrigin = 'anonymous'; video.src = item.mediaUrl;
+                video.muted = true; video.playsInline = true; video.preload = 'auto';
+                if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
+                await video.play();
+                while (!video.ended && !video.error) { drawMovieFrame(ctx, video, item, index, items.length, true); updateProgress(index, Number.isFinite(video.duration) && video.duration ? video.currentTime / video.duration : 0); await movieFrame(); }
+                if (video.error) throw new Error('A video could not be read. Check the Cloudinary video URL and try again.');
+                video.pause(); video.removeAttribute('src'); video.load(); video = null;
+            }
+        }
+        clearInterval(toneTimer); toneTimer = null; recorder.stop(); await stopped;
+        const blob = new Blob(chunks, { type: mimeType });
+        if (!blob.size) throw new Error('The video was empty. Please try again.');
+        if (movieUrl) URL.revokeObjectURL(movieUrl);
+        movieUrl = URL.createObjectURL(blob); preview.src = movieUrl; preview.hidden = false;
+        document.getElementById('story-video-download').href = movieUrl;
+        document.getElementById('story-video-actions').hidden = false;
+        const shareButton = document.getElementById('story-video-share'); shareButton.hidden = !(navigator.share && navigator.canShare);
+        movieProgress.value = 100; movieStatus.textContent = `Your ${items.length}-memory love film is ready. Download it or share it from your phone.`;
+    } catch (error) {
+        if (recorder?.state === 'recording') { try { recorder.stop(); } catch {} }
+        movieStatus.textContent = error?.message || 'The video could not be created. Please try again.';
+    } finally {
+        clearInterval(toneTimer); if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+        canvasStream?.getTracks().forEach((track) => track.stop());
+        audioContext?.close().catch(() => {});
+        movieBusy = false; movieButton.disabled = false;
+    }
+}
+
+movieButton.addEventListener('click', () => {
+    movieStudio.hidden = false; movieStudio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    makeLoveMovie();
+});
+document.getElementById('story-video-share').addEventListener('click', async () => {
+    if (!movieUrl) return;
+    try {
+        const blob = await (await fetch(movieUrl)).blob(); const file = new File([blob], 'our-love-story.webm', { type: blob.type });
+        if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Our little love film', text: 'A few memories, together with love.' });
+    } catch (error) { if (error.name !== 'AbortError') movieStatus.textContent = 'Sharing was not available. Download the video and share it from your device.'; }
+});
+
 function storyText(tag, className, value) {
     const element = document.createElement(tag);
     element.className = className;
@@ -1088,6 +1226,9 @@ async function loadStoryMemories() {
         const filmLaunch = document.getElementById('story-film-launch');
         filmLaunch.disabled = storyItems.length === 0;
         filmLaunch.querySelector('small').textContent = storyItems.length ? `${storyItems.length} little ${storyItems.length === 1 ? 'moment' : 'moments'}, one story` : 'Memories will appear here when they are added';
+        const movieItems = storyItems.filter((item) => (item.kind === 'image' || item.kind === 'video') && item.mediaUrl);
+        movieButton.disabled = movieItems.length === 0;
+        movieButton.querySelector('small').textContent = movieItems.length ? `${movieItems.length} photos and videos · love tone included` : 'Add a photo or video to make your film';
         const title = document.querySelector('.title');
         if (title && story.title) { title.textContent = story.title; document.title = `${story.title} 💗`; }
         const message = document.getElementById('storyMessage');
