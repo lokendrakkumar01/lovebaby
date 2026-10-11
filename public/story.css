@@ -1740,3 +1740,31 @@ video.story-film-media{background:#08070b}
 @media(max-width:380px){.story-grid{grid-template-columns:1fr}.story-media{aspect-ratio:4/4.5}.story-film-top{padding-left:12px;padding-right:12px}.story-film-bottom{padding-left:13px;padding-right:13px}}
 @media(prefers-reduced-motion:reduce){.story-film,.story-film-media,.story-film-finale,.story-memory,.story-film-launch{animation:none!important;transition:none!important}.story-film-progress i.is-active::after{animation:none;transform:scaleX(1)}}
 
+/* Locally rendered, downloadable memory movie studio */
+.story-movie-launch{display:flex;align-items:center;gap:13px;min-height:66px;padding:10px 17px;border:1px solid #ffffff52;border-radius:18px;background:linear-gradient(135deg,#fff2f8 0%,#e8c4d8 52%,#c99bbd 100%);color:#3a172b;text-align:left;box-shadow:0 14px 36px #eaa1c322,inset 0 1px #fff;cursor:pointer;transition:transform .22s,box-shadow .22s}
+.story-movie-launch:hover{transform:translateY(-3px);box-shadow:0 20px 44px #eaa1c344,inset 0 1px #fff}
+.story-movie-launch:active{transform:scale(.98)}
+.story-movie-launch:disabled{opacity:.58;cursor:not-allowed;transform:none}
+.story-movie-launch>span:first-child{display:grid;place-items:center;width:42px;height:42px;border:1px solid #a4507650;border-radius:50%;background:#fff8;color:#a33d6a;font-size:1.1rem}
+.story-movie-launch>span:nth-child(2){display:grid;gap:4px}
+.story-movie-launch strong{font-size:.82rem;letter-spacing:.015em}
+.story-movie-launch small{color:#704456;font-size:.64rem}
+.story-video-studio{max-width:760px;margin:26px auto 38px;padding:clamp(17px,4vw,28px);overflow:hidden;border:1px solid #ffffff2c;border-radius:24px;background:radial-gradient(ellipse at 12% 0,#ed6b9d25,transparent 54%),linear-gradient(145deg,#291424,#140e19 75%);box-shadow:0 22px 65px #0005;color:#fff4f8;animation:storyMusicIn .4s ease both}
+.story-video-studio[hidden]{display:none}
+.story-video-studio-head{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:17px}
+.story-video-studio-head h3{margin:7px 0 5px;font:400 clamp(1.45rem,5vw,2rem)/1.12 Georgia,serif;letter-spacing:-.035em}
+.story-video-studio-head p{margin:0;color:#e0c7d2;font-size:.76rem;line-height:1.55}
+.story-video-studio-mark{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border:1px solid #f99cba55;border-radius:50%;background:#f36e9b1c;color:#ff9cba;font-size:1.5rem;animation:filmHeart 2.4s ease-in-out infinite}
+.story-video-studio progress{display:block;width:100%;height:8px;margin:0 0 16px;overflow:hidden;border:0;border-radius:10px;background:#ffffff20;accent-color:#f079a2}
+.story-video-studio progress::-webkit-progress-bar{border-radius:10px;background:#ffffff20}
+.story-video-studio progress::-webkit-progress-value{border-radius:10px;background:linear-gradient(90deg,#ff8fb1,#ffe4ed);transition:width .2s}
+.story-video-studio progress::-moz-progress-bar{border-radius:10px;background:linear-gradient(90deg,#ff8fb1,#ffe4ed)}
+.story-video-preview{display:block;width:min(100%,380px);max-height:70vh;aspect-ratio:9/16;margin:0 auto 15px;border:1px solid #ffffff2c;border-radius:18px;background:#08070b;object-fit:contain;box-shadow:0 18px 48px #0005}
+.story-video-preview[hidden]{display:none}
+.story-video-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.story-video-actions[hidden]{display:none}
+.story-video-actions .story-film-action{min-height:46px;padding:0 18px;border-color:#f5b2cb66;background:linear-gradient(140deg,#d95083,#794365);box-shadow:0 8px 26px #e1488133}
+.story-video-actions .story-film-action:hover{background:linear-gradient(140deg,#eb6397,#925177)}
+.story-movie-launch:focus-visible{outline:3px solid #ffd5e7;outline-offset:4px}
+@media(max-width:640px){.story-gallery-actions{align-items:stretch}.story-film-launch,.story-movie-launch{width:min(100%,380px);min-height:62px;border-radius:16px}.story-video-studio{width:calc(100% - 8px);margin:20px auto 28px;padding:16px 13px;border-radius:20px}.story-video-preview{width:min(100%,320px);max-height:58dvh}.story-video-studio-head p{font-size:.7rem}}
+@media(prefers-reduced-motion:reduce){.story-movie-launch,.story-video-studio,.story-video-studio-mark{animation:none!important;transition:none!important}}
