@@ -906,6 +906,7 @@ const surpriseMemoryCount = document.getElementById('surprise-memory-count');
 const surpriseMemoryStrip = document.getElementById('surprise-memory-strip');
 const surpriseMemoryMake = document.getElementById('surprise-memory-make');
 const surpriseMemoryWatch = document.getElementById('surprise-memory-watch');
+const surpriseMemoryGallery = document.getElementById('surprise-memory-gallery');
 const movieStatus = document.getElementById('story-video-status');
 const movieProgress = document.getElementById('story-video-progress');
 const movieCanvas = document.createElement('canvas');
@@ -1064,6 +1065,7 @@ function launchLoveMovie() {
 }
 surpriseMemoryWatch.addEventListener('click', startStoryFilm);
 surpriseMemoryMake.addEventListener('click', launchLoveMovie);
+surpriseMemoryGallery.addEventListener('click', () => memoryWall.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
 movieButton.addEventListener('click', launchLoveMovie);
 document.getElementById('story-video-share').addEventListener('click', async () => {
@@ -1300,11 +1302,8 @@ const storyRevealObserver = new MutationObserver(() => {
     memoryWall.hidden = false;
     memoryWall.classList.add('story-gallery-visible');
     storyRevealObserver.disconnect();
-    setTimeout(() => {
-        const memoryId = location.hash.match(/^#memory-([a-f0-9]{24})$/i)?.[1];
-        const target = memoryId ? document.getElementById(`memory-${memoryId}`) : memoryWall;
-        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 250);
+    const memoryId = location.hash.match(/^#memory-([a-f0-9]{24})$/i)?.[1];
+    if (memoryId) setTimeout(() => document.getElementById(`memory-${memoryId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
 });
 storyRevealObserver.observe(reveal, { attributes: true, attributeFilter: ['class'] });
 loadStoryMemories();
