@@ -1035,7 +1035,13 @@ async function makeLoveMovie() {
 function renderSurpriseMemoryStrip(items) {
     const mediaItems = items.filter((item) => (item.kind === 'image' || item.kind === 'video') && item.mediaUrl);
     surpriseMemoryStrip.replaceChildren();
-    if (!mediaItems.length) { surpriseMemoryPreview.hidden = true; return; }
+    if (!mediaItems.length) {
+        surpriseMemoryPreview.hidden = false;
+        surpriseMemoryCount.textContent = items.length ? 'A note is waiting here, but there are no photos or videos yet.' : 'Your photo and video memories will appear here.';
+        surpriseMemoryWatch.disabled = items.length === 0;
+        surpriseMemoryMake.disabled = true;
+        return;
+    }
     const photoCount = mediaItems.filter((item) => item.kind === 'image').length;
     const videoCount = mediaItems.filter((item) => item.kind === 'video').length;
     surpriseMemoryCount.textContent = `${mediaItems.length} memories · ${photoCount} photos · ${videoCount} videos`;
@@ -1294,6 +1300,14 @@ async function loadStoryMemories() {
         } else player.hidden = true;
     } catch (error) {
         storyError.textContent = error.message;
+        filmLaunch.disabled = true;
+        movieButton.disabled = true;
+        movieButton.querySelector('small').textContent = 'Memories could not be loaded';
+        surpriseMemoryPreview.hidden = false;
+        surpriseMemoryCount.textContent = 'This story link could not load its memories.';
+        surpriseMemoryStrip.replaceChildren();
+        surpriseMemoryWatch.disabled = true;
+        surpriseMemoryMake.disabled = true;
     }
 }
 
