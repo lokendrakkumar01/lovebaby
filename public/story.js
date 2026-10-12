@@ -1061,6 +1061,7 @@ function renderSurpriseMemoryStrip(items) {
     });
     if (mediaItems.length > 7) surpriseMemoryStrip.append(storyText('div', 'surprise-memory-more', `+${mediaItems.length - 7}`));
     surpriseMemoryPreview.hidden = false;
+    surpriseMemoryWatch.disabled = false;
     const canMakeVideo = mediaItems.some((item) => item.kind === 'image' || item.kind === 'video');
     surpriseMemoryMake.disabled = !canMakeVideo;
 }
