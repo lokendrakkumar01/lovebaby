@@ -968,6 +968,9 @@ async function makeLoveMovie() {
         movieStatus.textContent = 'This browser cannot create a video file. Try the latest Chrome or Edge on your phone or computer.'; return;
     }
     movieBusy = true; movieButton.disabled = true; movieProgress.hidden = false; movieProgress.value = 0;
+    const mobileEncode = window.matchMedia('(max-width: 700px)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    movieCanvas.width = mobileEncode ? 480 : 720;
+    movieCanvas.height = mobileEncode ? 854 : 1280;
     document.getElementById('story-video-actions').hidden = true;
     const preview = document.getElementById('story-video-preview'); preview.hidden = true;
     const ctx = movieCanvas.getContext('2d');
@@ -985,11 +988,12 @@ async function makeLoveMovie() {
             oscillator.connect(gain); gain.connect(audioDestination); oscillator.start(start); oscillator.stop(start + .52);
         };
         playNote(); toneTimer = setInterval(playNote, 480);
-        canvasStream = movieCanvas.captureStream(24);
+        canvasStream = movieCanvas.captureStream(mobileEncode ? 15 : 24);
         const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()]);
-        const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((type) => Recorder.isTypeSupported(type));
+        const formats = mobileEncode ? ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'] : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+        const mimeType = formats.find((type) => Recorder.isTypeSupported(type));
         if (!mimeType) throw new Error('This browser does not support the video format needed for the keepsake. Try Chrome or Edge.');
-        recorder = new Recorder(stream, { mimeType, videoBitsPerSecond: 3_000_000 });
+        recorder = new Recorder(stream, { mimeType, videoBitsPerSecond: mobileEncode ? 1_200_000 : 2_400_000 });
         recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
         const stopped = new Promise((resolve, reject) => { recorder.addEventListener('stop', resolve, { once: true }); recorder.addEventListener('error', () => reject(new Error('The browser stopped recording the movie. Try fewer or shorter videos.')), { once: true }); });
         drawMovieFrame(ctx, null, {}, 0, items.length); recorder.start(1000);
@@ -1259,7 +1263,15 @@ document.getElementById('story-filters').addEventListener('click', (event) => {
 
 async function loadStoryMemories() {
     if (!storyToken) {
-        storyError.textContent = 'This story link is incomplete.';
+        const message = 'This story link is incomplete. Ask the admin to create and share a fresh story link.';
+        storyError.textContent = message;
+        document.getElementById('story-film-launch').disabled = true;
+        movieButton.disabled = true;
+        movieButton.querySelector('small').textContent = 'Waiting for a valid story link';
+        surpriseMemoryPreview.hidden = false;
+        surpriseMemoryCount.textContent = message;
+        surpriseMemoryWatch.disabled = true;
+        surpriseMemoryMake.disabled = true;
         return;
     }
     try {
@@ -1305,7 +1317,9 @@ async function loadStoryMemories() {
         movieButton.disabled = true;
         movieButton.querySelector('small').textContent = 'Memories could not be loaded';
         surpriseMemoryPreview.hidden = false;
-        surpriseMemoryCount.textContent = 'This story link could not load its memories.';
+        surpriseMemoryCount.textContent = /no longer available|no longer active/i.test(error.message)
+            ? 'This story link is no longer active. Ask the admin to create and share a new one.'
+            : `Could not load the memories: ${error.message}`;
         surpriseMemoryStrip.replaceChildren();
         surpriseMemoryWatch.disabled = true;
         surpriseMemoryMake.disabled = true;
