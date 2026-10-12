@@ -901,6 +901,11 @@ filmStage.addEventListener('touchend', (event) => {
 /* Build a shareable keepsake movie locally in the browser. */
 const movieButton = document.getElementById('story-movie-launch');
 const movieStudio = document.getElementById('story-video-studio');
+const surpriseMemoryPreview = document.getElementById('surprise-memory-preview');
+const surpriseMemoryCount = document.getElementById('surprise-memory-count');
+const surpriseMemoryStrip = document.getElementById('surprise-memory-strip');
+const surpriseMemoryMake = document.getElementById('surprise-memory-make');
+const surpriseMemoryWatch = document.getElementById('surprise-memory-watch');
 const movieStatus = document.getElementById('story-video-status');
 const movieProgress = document.getElementById('story-video-progress');
 const movieCanvas = document.createElement('canvas');
@@ -1026,10 +1031,41 @@ async function makeLoveMovie() {
     }
 }
 
-movieButton.addEventListener('click', () => {
-    movieStudio.hidden = false; movieStudio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+function renderSurpriseMemoryStrip(items) {
+    const mediaItems = items.filter((item) => (item.kind === 'image' || item.kind === 'video') && item.mediaUrl);
+    surpriseMemoryStrip.replaceChildren();
+    if (!mediaItems.length) { surpriseMemoryPreview.hidden = true; return; }
+    const photoCount = mediaItems.filter((item) => item.kind === 'image').length;
+    const videoCount = mediaItems.filter((item) => item.kind === 'video').length;
+    surpriseMemoryCount.textContent = `${mediaItems.length} memories · ${photoCount} photos · ${videoCount} videos`;
+    mediaItems.slice(0, 7).forEach((item, index) => {
+        const tile = document.createElement('article');
+        tile.className = `surprise-memory-tile${item.kind === 'video' ? ' is-video' : ''}`;
+        tile.style.setProperty('--tile-index', index);
+        if (item.kind === 'image') {
+            const image = document.createElement('img');
+            image.src = item.mediaUrl; image.alt = item.caption || 'A photo memory'; image.loading = 'lazy'; image.decoding = 'async';
+            tile.append(image);
+        } else {
+            const icon = document.createElement('span'); icon.className = 'surprise-memory-video-icon'; icon.textContent = '▶'; icon.setAttribute('aria-hidden', 'true');
+            tile.append(icon, storyText('small', 'surprise-memory-video-label', 'VIDEO'));
+        }
+        surpriseMemoryStrip.append(tile);
+    });
+    if (mediaItems.length > 7) surpriseMemoryStrip.append(storyText('div', 'surprise-memory-more', `+${mediaItems.length - 7}`));
+    surpriseMemoryPreview.hidden = false;
+    const canMakeVideo = mediaItems.some((item) => item.kind === 'image' || item.kind === 'video');
+    surpriseMemoryMake.disabled = !canMakeVideo;
+}
+function launchLoveMovie() {
+    movieStudio.hidden = false;
+    movieStudio.scrollIntoView({ behavior: 'smooth', block: 'center' });
     makeLoveMovie();
-});
+}
+surpriseMemoryWatch.addEventListener('click', startStoryFilm);
+surpriseMemoryMake.addEventListener('click', launchLoveMovie);
+
+movieButton.addEventListener('click', launchLoveMovie);
 document.getElementById('story-video-share').addEventListener('click', async () => {
     if (!movieUrl) return;
     try {
@@ -1229,6 +1265,7 @@ async function loadStoryMemories() {
         filmLaunch.disabled = storyItems.length === 0;
         filmLaunch.querySelector('small').textContent = storyItems.length ? `${storyItems.length} little ${storyItems.length === 1 ? 'moment' : 'moments'}, one story` : 'Memories will appear here when they are added';
         const movieItems = storyItems.filter((item) => (item.kind === 'image' || item.kind === 'video') && item.mediaUrl);
+        renderSurpriseMemoryStrip(storyItems);
         movieButton.disabled = movieItems.length === 0;
         movieButton.querySelector('small').textContent = movieItems.length ? `${movieItems.length} photos and videos · love tone included` : 'Add a photo or video to make your film';
         const title = document.querySelector('.title');
