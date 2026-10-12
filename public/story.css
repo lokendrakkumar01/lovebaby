@@ -1796,3 +1796,7 @@ video.story-film-media{background:#08070b}
 @media(max-width:700px){.surprise-memory-preview{width:min(100%,470px);margin:12px auto 7px;padding:10px;border-radius:15px}.surprise-memory-strip{gap:6px;margin:9px 0 10px}.surprise-memory-tile{flex-basis:clamp(58px,17vw,82px);border-radius:10px}.surprise-memory-actions{display:grid;grid-template-columns:1fr 1fr}.surprise-memory-button{min-height:44px;padding:0 8px;font-size:.61rem}.story-video-studio{width:min(100%,480px);margin:13px auto 18px;padding:13px 11px;border-radius:17px}.story-video-studio-head h3{font-size:1.35rem}.story-video-studio-head p{font-size:.66rem}.story-video-preview{width:min(100%,270px);max-height:45dvh}}
 @media(max-width:360px){.surprise-memory-actions{grid-template-columns:1fr}.surprise-memory-button{width:100%}}
 @media(prefers-reduced-motion:reduce){.surprise-memory-preview,.surprise-memory-tile,.surprise-memory-tile::after,.surprise-memory-heart{animation:none!important}}
+
+/* Gift reveal keeps thumbnails and creation controls within reach */
+.surprise-memory-gallery{background:#ffffff09;border-style:dashed}
+@media(max-width:700px){.surprise-memory-gallery{grid-column:1/-1}}
