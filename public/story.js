@@ -1294,6 +1294,25 @@ async function loadStoryMemories() {
         const message = document.getElementById('storyMessage');
         message.textContent = story.message || '';
         message.hidden = !story.message;
+        const isLongMessage = (story.message || '').length > 180;
+        let messageToggle = document.getElementById('story-message-toggle');
+        if (!messageToggle) {
+            messageToggle = document.createElement('button');
+            messageToggle.id = 'story-message-toggle';
+            messageToggle.className = 'story-message-toggle';
+            messageToggle.type = 'button';
+            message.insertAdjacentElement('afterend', messageToggle);
+            messageToggle.addEventListener('click', () => {
+                const expanded = message.classList.toggle('is-expanded');
+                messageToggle.setAttribute('aria-expanded', String(expanded));
+                messageToggle.textContent = expanded ? 'Show less' : 'Read the full note';
+            });
+        }
+        messageToggle.hidden = !story.message || !isLongMessage;
+        message.classList.toggle('is-collapsed', isLongMessage);
+        message.classList.remove('is-expanded');
+        messageToggle.setAttribute('aria-expanded', 'false');
+        messageToggle.textContent = 'Read the full note';
         const description = story.subtitle || 'Every photo, video and message, together.';
         document.getElementById('storySubtitle').textContent = `${description} · ${data.items.length} ${data.items.length === 1 ? 'memory' : 'memories'}`;
         const player = document.getElementById('story-spotify-track');
