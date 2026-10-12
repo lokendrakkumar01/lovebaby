@@ -1300,7 +1300,7 @@ async function loadStoryMemories() {
         } else player.hidden = true;
     } catch (error) {
         storyError.textContent = error.message;
-        filmLaunch.disabled = true;
+        document.getElementById('story-film-launch').disabled = true;
         movieButton.disabled = true;
         movieButton.querySelector('small').textContent = 'Memories could not be loaded';
         surpriseMemoryPreview.hidden = false;
