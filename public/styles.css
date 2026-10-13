@@ -85,3 +85,25 @@
 .memory-spotify-player{flex-basis:100%;max-width:540px;padding:9px 11px;border:1px solid var(--line,#e5dcd3);border-radius:10px;background:#fffaf6;color:#66414a}.memory-spotify-player summary{min-height:40px;display:flex;align-items:center;cursor:pointer;font-size:.72rem;font-weight:650}.memory-spotify-player iframe{display:block;width:100%;height:152px;margin-top:7px;border:0;border-radius:10px}.memory-spotify-player[open]{animation:memoryMusicOpen .28s ease-out both}@keyframes memoryMusicOpen{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){.memory-spotify-player[open]{animation:none}}
 
 .spotify-picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center;width:min(100%,500px);flex-basis:100%;margin-top:8px}.spotify-picker>input{min-width:0;min-height:44px;padding:9px 11px;border:1px solid #e5dcd3;border-radius:8px;background:#fffdf9;color:#292422;font:400 .75rem Inter,'Segoe UI',Arial,sans-serif}.spotify-picker>small{grid-column:1/-1;color:#827a74;font-size:.65rem;line-height:1.5}.spotify-search-results{grid-column:1/-1;display:grid;gap:6px;max-height:280px;overflow:auto}.spotify-result{display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:7px 9px;border:1px solid #e5dcd3;border-radius:9px;background:#fffdf9;color:#292422;text-align:left;cursor:pointer}.spotify-result:focus-visible,.spotify-result:hover{border-color:#a46a77;background:#fff7f5}.spotify-result img{width:42px;height:42px;object-fit:cover;border-radius:6px}.spotify-result span{display:grid;gap:4px;min-width:0}.spotify-result strong,.spotify-result small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.spotify-result strong{font-size:.72rem}.spotify-result small{color:#827a74;font-size:.63rem}.member-spotify-picker{grid-template-columns:minmax(0,1fr) auto}.member-spotify-picker .memory-tool-button{min-height:44px}@media(max-width:560px){.spotify-picker{grid-template-columns:1fr;width:100%}.spotify-picker>button{min-height:44px}.spotify-result{min-height:60px}}
+
+
+/* Reliable, thumb-sized media pickers and upload feedback on touch screens. */
+.dropzone,.contributor-picker{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.dropzone input,.contributor-picker input{z-index:3;touch-action:manipulation}
+.dropzone:focus-within,.contributor-picker:focus-within{outline:3px solid #b96d83;outline-offset:3px;border-color:#9d526b;background:#fff7f6}
+.dropzone .upload-glyph,.contributor-picker .upload-glyph{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:#f4e5e8;color:#9c536b;font-size:1.45rem;font-weight:750}
+.upload-form.busy,.contributor-upload.busy{opacity:.96}
+#upload-progress,#contributor-error,#shared-error{overflow-wrap:anywhere}
+@media(max-width:700px){
+  .dropzone{height:auto;min-height:118px;padding:14px 12px;gap:7px;border-width:2px;border-radius:14px}
+  .dropzone b{font-size:.83rem;text-align:center}
+  .dropzone small{font-size:.66rem;line-height:1.45;text-align:center}
+  .contributor-picker{min-height:84px;padding:12px;border-width:2px;border-radius:13px}
+  .contributor-picker b{font-size:.8rem;line-height:1.35}
+  .contributor-picker small{font-size:.66rem;line-height:1.4}
+  .contributor-picker .upload-glyph{width:44px;height:44px;flex:0 0 44px}
+  #upload-progress,.contributor-hint{font-size:.68rem;line-height:1.5}
+  .composer-foot{align-items:center;flex-wrap:wrap}
+  .composer-foot>span{flex:1 1 58%;min-width:0}
+  .composer-foot>.button{min-height:44px;padding:0 14px}
+}
