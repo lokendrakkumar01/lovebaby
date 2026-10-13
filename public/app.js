@@ -23,6 +23,24 @@ async function api(path, options = {}) {
   return data;
 }
 
+function uploadMediaWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', path);
+    request.withCredentials = true;
+    request.upload.addEventListener('progress', (event) => { if (event.lengthComputable) onProgress(`Uploading · ${Math.round(event.loaded / event.total * 100)}%`); });
+    request.upload.addEventListener('load', () => onProgress('Saving securely to your gallery…'));
+    request.addEventListener('load', () => {
+      let data = {}; try { data = JSON.parse(request.responseText); } catch {}
+      if (request.status < 200 || request.status >= 300) { const error = new Error(data.error || `Upload failed (${request.status}).`); error.status = request.status; reject(error); }
+      else resolve(data);
+    });
+    request.addEventListener('error', () => reject(new Error('The upload connection was interrupted. Check your connection and try again.')));
+    request.addEventListener('abort', () => reject(new Error('The upload was cancelled.')));
+    request.send(formData);
+  });
+}
+
 function renderSpotifyResults(target, tracks, onSelect) {
   target.replaceChildren();
   tracks.forEach((track) => {
@@ -748,11 +766,18 @@ $('#upload-form').addEventListener('submit', async (event) => {
   $('#upload-progress').textContent = 'Saving to the shared gallery…';
   setNotice($('#dashboard-error'));
   try {
-    await api('/api/media', { method: 'POST', body: payload });
+    const result = await uploadMediaWithProgress('/api/media', payload, (message) => { $('#upload-progress').textContent = message; });
+    if (result.item) {
+      items = [{ ...result.item, canDelete: true }, ...items.filter((item) => item.id !== result.item.id)];
+      $('#memory-count').textContent = `${items.length} ${items.length === 1 ? 'memory' : 'memories'}`;
+      renderItems($('#memories-grid'), items, true);
+    }
     form.reset();
     $('#file-label').textContent = 'Choose a photo or video';
-    $('#upload-progress').textContent = 'Shared with signed-in members';
+    $('#upload-progress').textContent = 'Added to your gallery · refreshing…';
     await loadItems();
+    $('#upload-progress').textContent = 'Your photo/video is now in your memories below.';
+    $('#memories-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     setNotice($('#dashboard-error'), error.message);
     $('#upload-progress').textContent = 'Upload did not finish.';
