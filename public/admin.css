@@ -63,3 +63,23 @@
  .admin-file-pick{min-height:60px;font-size:.76rem}
  .admin-caption input{height:46px;border-radius:10px;font-size:.82rem}
 }
+
+
+/* High-visibility mobile upload target; the native file input remains tappable. */
+.admin-file-pick{touch-action:manipulation}
+.admin-file-pick input{z-index:3;touch-action:manipulation}
+.admin-file-pick:focus-within{outline:3px solid #9d526b;outline-offset:3px;border-color:#9d526b;background:#fff7f6}
+.admin-file-pick .upload-glyph{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:#f4e5e8;color:#9c536b;font-size:1.35rem;font-weight:750}
+@media(max-width:700px){
+  .admin-file-pick{min-height:78px;padding:12px;border-width:2px;border-radius:13px;font-size:.8rem;line-height:1.4}
+  #admin-upload-status{font-size:.68rem;line-height:1.5;overflow-wrap:anywhere}
+  .admin-tool-actions{align-items:stretch;flex-direction:column}
+  .admin-tool-actions .primary{min-height:46px}
+}
+
+.admin-story-invite{display:grid;gap:9px;margin-top:13px;padding:13px;border:1px solid #ead8d1;border-radius:10px;background:#fffaf7}
+.admin-story-invite>div:first-child{display:grid;gap:4px}
+.admin-story-invite>div:first-child b{font-size:.72rem;color:var(--ink)}
+.admin-story-invite>div:first-child small{font-size:.61rem;line-height:1.5;color:var(--muted)}
+.admin-invite-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:700px){.admin-story-invite{padding:12px}.admin-invite-actions{display:grid;grid-template-columns:1fr 1fr}.admin-invite-actions button{min-height:44px}}
