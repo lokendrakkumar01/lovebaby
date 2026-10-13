@@ -650,9 +650,13 @@ $('#message-form').addEventListener('submit', async (event) => {
 
 const fileInput = $('#media-file');
 const dropzone = $('.dropzone');
+const uploadForm = $('#upload-form');
 fileInput.addEventListener('change', () => {
-  const file = fileInput.files[0];
-  $('#file-label').textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'Choose a photo or video';
+  const files = Array.from(fileInput.files || []);
+  $('#file-label').textContent = files.length === 1
+    ? `${files[0].name} · ${(files[0].size / 1024 / 1024).toFixed(1)} MB`
+    : files.length ? `${files.length} photos/videos · upload starting…` : 'Choose photos or videos';
+  if (files.length && !uploadForm.classList.contains('busy')) requestAnimationFrame(() => uploadForm.requestSubmit());
 });
 
 $('#contributor-button').addEventListener('click', async (event) => {
@@ -694,95 +698,130 @@ $('#revoke-contributor').addEventListener('click', async (event) => {
 });
 
 const contributorFile = $('#contributor-file');
+const contributorForm = $('#contributor-form');
 contributorFile.addEventListener('change', () => {
-  const files = Array.from(contributorFile.files);
+  const files = Array.from(contributorFile.files || []);
   $('#contributor-file-label').textContent = files.length === 1
     ? `${files[0].name} · ${(files[0].size / 1024 / 1024).toFixed(1)} MB`
-    : files.length ? `${files.length} photos or videos selected` : 'Choose photos or videos';
+    : files.length ? `${files.length} photos/videos · upload starting…` : 'Choose photos or videos';
+  if (files.length && !contributorForm.classList.contains('busy')) requestAnimationFrame(() => contributorForm.requestSubmit());
 });
-$('#contributor-form').addEventListener('submit', async (event) => {
+contributorForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const files = Array.from(contributorFile.files);
+  const files = Array.from(contributorFile.files || []);
   if (!files.length) return;
-  if (files.some((file) => file.size > 100 * 1024 * 1024)) {
-    setNotice($('#shared-error'), 'Each photo or video must be smaller than 100 MB.');
-    return;
-  }
+  const tooLarge = files.find((file) => file.size > 100 * 1024 * 1024);
+  if (tooLarge) { setNotice($('#shared-error'), `${tooLarge.name} is over the 100 MB per-file limit.`); return; }
+
   const button = $('#contributor-submit');
-  button.disabled = true;
   const hint = form.querySelector('.contributor-hint');
-  const defaultHint = 'This private link lets you add photos and videos to the album.';
+  const defaultHint = 'Select photos/videos and they upload right away · up to 100 MB each.';
+  button.disabled = true;
+  contributorFile.disabled = true;
+  form.elements.caption.disabled = true;
+  form.classList.add('busy');
   button.textContent = 'Adding memories…';
   setNotice($('#shared-error'));
+  const failures = [];
+  let nextIndex = 0;
   let uploadedCount = 0;
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      hint.textContent = `Uploading ${index + 1} of ${files.length}…`;
+  const uploadOne = async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex++;
       const payload = new FormData();
       payload.append('file', files[index]);
       payload.append('caption', form.elements.caption.value);
-      await api(`/api/contribute/${encodeURIComponent(contributorToken)}/media`, { method: 'POST', body: payload });
-      uploadedCount += 1;
+      try {
+        await uploadMediaWithProgress(`/api/contribute/${encodeURIComponent(contributorToken)}/media`, payload, (progress) => {
+          hint.textContent = `Uploading ${index + 1}/${files.length} · ${progress}`;
+        });
+        uploadedCount += 1;
+      } catch (error) { failures.push(`${files[index].name}: ${error.message}`); }
     }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(2, files.length) }, uploadOne));
     form.reset();
     $('#contributor-file-label').textContent = 'Choose photos or videos';
-    await loadContributorAlbum();
-    $('#shared-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (error) {
-    if (uploadedCount) {
-      form.reset();
-      $('#contributor-file-label').textContent = 'Choose photos or videos';
-      await loadContributorAlbum();
-      setNotice($('#shared-error'), `${uploadedCount} ${uploadedCount === 1 ? 'file was' : 'files were'} added. Select any remaining files again. ${error.message}`);
-    } else setNotice($('#shared-error'), error.message);
+    if (uploadedCount) await loadContributorAlbum();
+    if (failures.length) setNotice($('#shared-error'), `${uploadedCount} uploaded; ${failures.length} failed. ${failures.slice(0, 2).join(' · ')}`);
+    else {
+      setNotice($('#shared-error'), `${uploadedCount} ${uploadedCount === 1 ? 'memory added' : 'memories added'} to the album.`);
+      $('#shared-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } catch (error) { setNotice($('#shared-error'), error.message); }
+  finally {
+    hint.textContent = defaultHint;
+    contributorFile.disabled = false;
+    form.elements.caption.disabled = false;
+    form.classList.remove('busy');
+    button.disabled = false;
+    button.innerHTML = 'Add to our memories <span>♡</span>';
   }
-  finally { hint.textContent = defaultHint; button.disabled = false; button.innerHTML = 'Add to our memories <span>♡</span>'; }
 });
 for (const eventName of ['dragenter', 'dragover']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.add('dragover'); });
 for (const eventName of ['dragleave', 'drop']) dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.remove('dragover'); });
 dropzone.addEventListener('drop', (event) => {
-  const file = event.dataTransfer.files[0];
-  if (!file) return;
+  const files = Array.from(event.dataTransfer.files || []);
+  if (!files.length) return;
   const transfer = new DataTransfer();
-  transfer.items.add(file);
+  files.forEach((file) => transfer.items.add(file));
   fileInput.files = transfer.files;
   fileInput.dispatchEvent(new Event('change'));
 });
 
-$('#upload-form').addEventListener('submit', async (event) => {
+uploadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const file = fileInput.files[0];
-  if (!file) return;
-  if (file.size > 100 * 1024 * 1024) {
-    setNotice($('#dashboard-error'), 'Choose a photo or video smaller than 100 MB.');
-    return;
-  }
+  const files = Array.from(fileInput.files || []);
+  if (!files.length) return;
+  const tooLarge = files.find((file) => file.size > 100 * 1024 * 1024);
+  if (tooLarge) { setNotice($('#dashboard-error'), `${tooLarge.name} is over the 100 MB per-file limit.`); return; }
+
   const submit = form.querySelector('button[type="submit"]');
-  const payload = new FormData(form);
   setBusy(form, true);
+  submit.disabled = true;
+  fileInput.disabled = true;
+  form.elements.caption.disabled = true;
   submit.textContent = 'Uploading…';
-  $('#upload-progress').textContent = 'Saving to the shared gallery…';
+  $('#upload-progress').textContent = `Preparing ${files.length} upload${files.length === 1 ? '' : 's'}…`;
   setNotice($('#dashboard-error'));
-  try {
-    const result = await uploadMediaWithProgress('/api/media', payload, (message) => { $('#upload-progress').textContent = message; });
-    if (result.item) {
-      items = [{ ...result.item, canDelete: true }, ...items.filter((item) => item.id !== result.item.id)];
-      $('#memory-count').textContent = `${items.length} ${items.length === 1 ? 'memory' : 'memories'}`;
-      renderItems($('#memories-grid'), items, true);
+  const failures = [];
+  let nextIndex = 0;
+  let uploadedCount = 0;
+  const uploadOne = async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex++;
+      const payload = new FormData();
+      payload.append('file', files[index]);
+      payload.append('caption', form.elements.caption.value);
+      await uploadMediaWithProgress('/api/media', payload, (message) => {
+        $('#upload-progress').textContent = `File ${index + 1}/${files.length} · ${message}`;
+      }).then(() => { uploadedCount += 1; })
+        .catch((error) => failures.push(`${files[index].name}: ${error.message}`));
     }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(2, files.length) }, uploadOne));
     form.reset();
-    $('#file-label').textContent = 'Choose a photo or video';
-    $('#upload-progress').textContent = 'Added to your gallery · refreshing…';
-    await loadItems();
-    $('#upload-progress').textContent = 'Your photo/video is now in your memories below.';
-    $('#memories-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('#file-label').textContent = 'Choose photos or videos';
+    if (uploadedCount) await loadItems();
+    $('#upload-progress').textContent = failures.length
+      ? `${uploadedCount} uploaded · ${failures.length} failed`
+      : `${uploadedCount} ${uploadedCount === 1 ? 'memory is' : 'memories are'} now in your gallery.`;
+    if (failures.length) setNotice($('#dashboard-error'), failures.slice(0, 2).join(' · '));
+    else if (uploadedCount) $('#memories-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     setNotice($('#dashboard-error'), error.message);
     $('#upload-progress').textContent = 'Upload did not finish.';
   } finally {
     setBusy(form, false);
+    submit.disabled = false;
+    fileInput.disabled = false;
+    form.elements.caption.disabled = false;
     submit.innerHTML = 'Upload memory <b>↗</b>';
   }
 });
