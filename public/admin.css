@@ -44,3 +44,22 @@
   .admin-story-share .spotify-picker>button{width:100%}
   .story-select-all{width:100%}
 }
+
+
+/* Keep the essential Create Story actions visible during mobile scroll. */
+.admin-story-actions{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 8px);z-index:8;padding:10px;border:1px solid #e6d7d3;border-radius:14px;background:#fffdf9ed;box-shadow:0 10px 34px #47372c20;backdrop-filter:blur(14px)}
+.admin-story-actions .primary{box-shadow:0 7px 18px #66414a22}
+#admin-upload-status{max-width:30ch;line-height:1.55;overflow-wrap:anywhere}
+@media(max-width:700px){
+ .admin-tools-card{overflow:visible}
+ .admin-story-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;margin:0 -5px}
+ .admin-story-actions #create-story-link{min-height:50px;grid-column:1/-1;grid-row:1}
+ .admin-story-actions #save-story{min-height:46px;grid-column:1;grid-row:2}
+ .admin-story-actions #revoke-story-link:not(.hidden){grid-column:2;grid-row:2}
+ .admin-story-actions #revoke-story-link.hidden{display:none!important}
+ .admin-tool-actions>span#admin-upload-status{max-width:none;flex:1 1 100%;font-size:.65rem}
+ .admin-upload .admin-tool-actions{display:grid;grid-template-columns:1fr}
+ .admin-upload .admin-tool-actions .primary{width:100%;min-height:49px}
+ .admin-file-pick{min-height:60px;font-size:.76rem}
+ .admin-caption input{height:46px;border-radius:10px;font-size:.82rem}
+}
