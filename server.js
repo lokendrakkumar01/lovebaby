@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
@@ -565,6 +566,23 @@ const memoryUpload = multer({
 });
 const knownFileTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'video/mp4', 'video/webm', 'video/quicktime']);
 
+function uploadCloudinaryVideo(path, options) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      if (error) { settled = true; reject(error); }
+      else if (result?.done !== false) { settled = true; resolve(result); }
+    };
+    const uploadStream = cloudinary.uploader.upload_chunked_stream({ ...options, resource_type: 'video', chunk_size: 6 * 1024 * 1024 }, finish);
+    const source = createReadStream(path);
+    source.once('error', finish);
+    uploadStream.once('error', finish);
+    source.pipe(uploadStream);
+  });
+}
+
 async function saveMedia(ownerId, req) {
   if (!req.file) {
     const error = new Error('Choose a photo or video to upload.');
@@ -581,19 +599,19 @@ async function saveMedia(ownerId, req) {
   const resourceType = detected.mime.startsWith('video/') ? 'video' : 'image';
   const caption = String(req.body?.caption || '').trim().slice(0, 180);
   let uploaded;
+  const uploadOptions = { type: 'authenticated', folder: 'little-moments', unique_filename: true, use_filename: false, overwrite: false, context: { alt: caption.slice(0, 100) } };
   try {
-    uploaded = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: resourceType,
-      type: 'authenticated',
-      folder: 'little-moments',
-      unique_filename: true,
-      use_filename: false,
-      overwrite: false,
-      context: { alt: caption.slice(0, 100) }
-    });
-  } finally {
-    await rm(req.file.path, { force: true });
-  }
+    uploaded = resourceType === 'video'
+      ? await uploadCloudinaryVideo(req.file.path, uploadOptions)
+      : await cloudinary.uploader.upload(req.file.path, { ...uploadOptions, resource_type: 'image' });
+  } catch (error) {
+    console.error('Cloudinary media upload failed:', { resourceType, bytes: req.file.size, message: error?.message || 'unknown error' });
+    const failure = new Error(resourceType === 'video'
+      ? 'The video could not be saved. Try an MP4/MOV video under 100 MB and check that Cloudinary has storage available.'
+      : 'The photo could not be saved. Please try again or check Cloudinary storage.');
+    failure.statusCode = 502;
+    throw failure;
+  } finally { await rm(req.file.path, { force: true }); }
   const entry = {
     ownerId,
     kind: resourceType,
