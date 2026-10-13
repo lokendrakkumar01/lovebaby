@@ -654,11 +654,9 @@ app.delete('/api/contributor-link', requireUser, async (req, res) => {
 app.get('/api/contribute/:token', async (req, res) => {
   const owner = await users.findOne({ contributorToken: req.params.token, suspended: { $ne: true } }, { projection: { name: 1, _id: 1 } });
   if (!owner) return res.status(404).json({ error: 'This upload link is no longer available.' });
-  const owners = await publicAlbumOwners();
-  const ownerNames = new Map(owners.map((item) => [item._id.toString(), item.name]));
-  const docs = await entries.find({ ownerId: { $in: owners.map((item) => item._id) }, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
+  const docs = await entries.find({ ownerId: owner._id, adminHidden: { $ne: true } }).sort({ createdAt: -1 }).limit(300).toArray();
   res.set('Cache-Control', 'no-store');
-  res.json({ ownerName: owner.name, items: docs.map((entry) => ({ ...cleanEntry(entry, req.params.token), ownerName: ownerNames.get(entry.ownerId.toString()) || 'Admin' })) });
+  res.json({ ownerName: owner.name, items: docs.map((entry) => ({ ...cleanEntry(entry, req.params.token), ownerName: owner.name })) });
 });
 
 async function requireContributor(req, res, next) {
@@ -817,10 +815,12 @@ app.get('/api/background/media', requireUser, async (req, res) => {
 
 app.get('/api/shared/:token/media/:id', async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: 'That memory was not found.' });
-  const owner = await users.findOne({ $or: [{ shareToken: req.params.token }, { contributorToken: req.params.token }] }, { projection: { _id: 1 } });
+  const owner = await users.findOne({ $or: [{ shareToken: req.params.token }, { contributorToken: req.params.token }] }, { projection: { _id: 1, contributorToken: 1 } });
   if (!owner) return res.status(404).json({ error: 'This album link is no longer available.' });
-  const owners = await publicAlbumOwners();
-  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: { $in: owners.map((item) => item._id) }, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
+  const ownerFilter = owner.contributorToken === req.params.token
+    ? owner._id
+    : { $in: (await publicAlbumOwners()).map((item) => item._id) };
+  const entry = await entries.findOne({ _id: new ObjectId(req.params.id), ownerId: ownerFilter, kind: { $in: ['image', 'video'] }, adminHidden: { $ne: true } });
   if (!entry) return res.status(404).json({ error: 'That memory was not found.' });
   await streamMedia(req, res, entry, { attachment: req.query.download === '1' });
 });
