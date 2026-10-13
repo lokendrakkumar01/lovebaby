@@ -517,47 +517,109 @@ $('#clear-background').addEventListener('click', async (event) => {
   finally { button.disabled = false; }
 });
 
-$('#admin-files').addEventListener('change', (event) => {
+const adminFiles = $('#admin-files');
+adminFiles.addEventListener('change', (event) => {
   const files = Array.from(event.target.files || []);
-  $('#admin-file-name').textContent = files.length ? `${files.length} file${files.length === 1 ? '' : 's'} selected` : 'Choose photos or videos';
+  $('#admin-file-name').textContent = files.length ? `${files.length} file${files.length === 1 ? '' : 's'} · uploading…` : 'Choose photos or videos';
+  if (files.length && !adminUploadForm.classList.contains('busy')) requestAnimationFrame(() => adminUploadForm.requestSubmit());
 });
 
 adminUploadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const files = Array.from($('#admin-files').files || []);
+  const files = Array.from(adminFiles.files || []);
   if (!files.length) return;
   const tooLarge = files.find((file) => file.size > 100 * 1024 * 1024);
   if (tooLarge) { $('#admin-upload-status').textContent = `${tooLarge.name} is over the 100 MB per-file limit.`; return; }
+
   const button = adminUploadForm.querySelector('button[type="submit"]');
+  const captionField = adminUploadForm.elements.caption;
+  const caption = String(captionField.value || '');
   button.disabled = true;
-  const caption = String(new FormData(adminUploadForm).get('caption') || '');
-  let uploaded = 0;
+  adminFiles.disabled = true;
+  captionField.disabled = true;
+  adminUploadForm.classList.add('busy');
+  const failures = [];
   const uploadedIds = [];
-  try {
-    for (const file of files) {
+  let nextIndex = 0;
+  let uploaded = 0;
+  const uploadOne = async () => {
+    while (nextIndex < files.length) {
+      const index = nextIndex++;
+      const file = files[index];
       const type = file.type.startsWith('video/') ? 'video' : 'photo';
-      $('#admin-upload-status').textContent = `Preparing ${type} ${uploaded + 1} of ${files.length}…`;
       const form = new FormData();
       form.append('file', file);
       form.append('caption', caption);
-      const result = await uploadWithProgress('/api/admin/media', form, (progress) => {
-        $('#admin-upload-status').textContent = `${type[0].toUpperCase() + type.slice(1)} ${uploaded + 1} of ${files.length} · ${progress}`;
-      });
-      if (result.item?.id) uploadedIds.push(result.item.id);
-      uploaded += 1;
+      try {
+        const result = await uploadWithProgress('/api/admin/media', form, (progress) => {
+          $('#admin-upload-status').textContent = `${type[0].toUpperCase() + type.slice(1)} ${index + 1}/${files.length} · ${progress}`;
+        });
+        if (result.item?.id) uploadedIds.push(result.item.id);
+        uploaded += 1;
+      } catch (error) { failures.push(`${file.name}: ${error.message}`); }
     }
+  };
+
+  try {
+    $('#admin-upload-status').textContent = `Starting ${files.length} upload${files.length === 1 ? '' : 's'}…`;
+    await Promise.all(Array.from({ length: Math.min(2, files.length) }, uploadOne));
     if (Array.isArray(storyMemoryIds)) storyMemoryIds = [...new Set([...storyMemoryIds, ...uploadedIds])];
     adminUploadForm.reset();
     $('#admin-file-name').textContent = 'Choose photos or videos';
-    $('#admin-upload-status').textContent = `${uploaded} photo/video ${uploaded === 1 ? 'added' : 'items added'} · refreshing gallery…`;
-    await loadMemories();
-    $('#admin-upload-status').textContent = `${uploaded} photo/video ${uploaded === 1 ? 'added' : 'items added'} below. Selected for the story; save the story to update its link.`;
-    document.querySelector('[data-view="memories-view"]')?.click();
-    $('#admin-memory-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (uploaded) await loadMemories();
+    $('#admin-upload-status').textContent = failures.length
+      ? `${uploaded} uploaded · ${failures.length} failed. ${failures.slice(0, 2).join(' · ')}`
+      : `${uploaded} ${uploaded === 1 ? 'photo/video added' : 'photos/videos added'} and shown in the gallery. Selected for the story; save the story to update its link.`;
+    if (uploaded) {
+      document.querySelector('[data-view="memories-view"]')?.click();
+      $('#admin-memory-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   } catch (error) {
-    $('#admin-upload-status').textContent = uploaded ? `${uploaded} uploaded; the next file failed: ${error.message}` : error.message;
+    $('#admin-upload-status').textContent = error.message;
     await loadMemories().catch(() => {});
-  } finally { button.disabled = false; }
+  } finally {
+    button.disabled = false;
+    adminFiles.disabled = false;
+    captionField.disabled = false;
+    adminUploadForm.classList.remove('busy');
+  }
+});
+
+$('#create-story-upload-link').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  notice($('#story-upload-link-status'), 'Preparing the private upload link…');
+  try {
+    const { url } = await api('/api/admin/contributor-link', { method: 'POST' });
+    const field = $('#story-upload-link-url');
+    field.value = url;
+    field.classList.remove('hidden');
+    $('#revoke-story-upload-link').classList.remove('hidden');
+    try {
+      await navigator.clipboard.writeText(url);
+      notice($('#story-upload-link-status'), 'Upload link copied. The recipient can add photos and videos from their phone.');
+    } catch {
+      field.focus(); field.select();
+      notice($('#story-upload-link-status'), 'Upload link is ready. Copy it and send it to your guest.');
+    }
+    button.textContent = 'Copy upload link';
+  } catch (error) { notice($('#story-upload-link-status'), error.message); }
+  finally { button.disabled = false; }
+});
+
+$('#revoke-story-upload-link').addEventListener('click', async (event) => {
+  if (!window.confirm('Revoke this story upload link? The recipient will no longer be able to add memories.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api('/api/admin/contributor-link', { method: 'DELETE' });
+    $('#story-upload-link-url').value = '';
+    $('#story-upload-link-url').classList.add('hidden');
+    button.classList.add('hidden');
+    $('#create-story-upload-link').textContent = 'Create upload link';
+    notice($('#story-upload-link-status'), 'Upload link revoked.');
+  } catch (error) { notice($('#story-upload-link-status'), error.message); }
+  finally { button.disabled = false; }
 });
 
 $('#create-story-link').addEventListener('click', async (event) => {
