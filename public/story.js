@@ -981,6 +981,23 @@ function drawMovieFrame(ctx, media, item, itemIndex, itemCount, videoSource = fa
     ctx.fillStyle = '#ffffffa8'; ctx.font = '16px system-ui'; ctx.textAlign = 'right'; ctx.fillText(`${itemIndex + 1} / ${itemCount}`, width - 28, 42);
 }
 
+function waitForMoviePreview(preview) {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => finish(new Error('The video file was created, but this browser could not open its preview. Try downloading it or use the latest Chrome/Safari.')), 15000);
+        const cleanup = () => {
+            clearTimeout(timeout);
+            preview.removeEventListener('loadeddata', onReady);
+            preview.removeEventListener('error', onError);
+        };
+        const finish = (error) => { cleanup(); error ? reject(error) : resolve(); };
+        const onReady = () => finish();
+        const onError = () => finish(new Error('The video was created in a format this browser cannot play. Please use the latest Chrome, Edge, or Safari.'));
+        preview.addEventListener('loadeddata', onReady, { once: true });
+        preview.addEventListener('error', onError, { once: true });
+        if (preview.readyState >= 2) finish();
+    });
+}
+
 function waitForMedia(media, eventName) {
     if (media instanceof HTMLImageElement && media.complete) return media.naturalWidth ? Promise.resolve() : Promise.reject(new Error('A photo could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.'));
     if (media instanceof HTMLVideoElement && media.error) return Promise.reject(new Error('A video could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.'));
@@ -1024,9 +1041,16 @@ async function makeLoveMovie() {
         playNote(); toneTimer = setInterval(playNote, 480);
         canvasStream = movieCanvas.captureStream(mobileEncode ? 15 : 24);
         const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()]);
-        const formats = mobileEncode ? ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'] : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-        const mimeType = formats.find((type) => Recorder.isTypeSupported(type));
-        if (!mimeType) throw new Error('This browser does not support the video format needed for the keepsake. Try Chrome or Edge.');
+        const videoProbe = document.createElement('video');
+        const formats = [
+            'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+            'video/mp4',
+            ...(mobileEncode
+                ? ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
+                : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'])
+        ];
+        const mimeType = formats.find((type) => Recorder.isTypeSupported(type) && videoProbe.canPlayType(type));
+        if (!mimeType) throw new Error('This browser cannot both create and play a supported video format. Please use the latest Chrome, Edge, or Safari.');
         recorder = new Recorder(stream, { mimeType, videoBitsPerSecond: mobileEncode ? 1_200_000 : 2_400_000 });
         recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
         const stopped = new Promise((resolve, reject) => { recorder.addEventListener('stop', resolve, { once: true }); recorder.addEventListener('error', () => reject(new Error('The browser stopped recording the movie. Try fewer or shorter videos.')), { once: true }); });
@@ -1054,13 +1078,22 @@ async function makeLoveMovie() {
         const blob = new Blob(chunks, { type: mimeType });
         if (!blob.size) throw new Error('The video was empty. Please try again.');
         if (movieUrl) URL.revokeObjectURL(movieUrl);
-        movieUrl = URL.createObjectURL(blob); preview.src = movieUrl; preview.hidden = false;
+        movieUrl = URL.createObjectURL(blob);
+        preview.src = movieUrl;
+        preview.hidden = false;
+        preview.load();
+        await waitForMoviePreview(preview);
         document.getElementById('story-video-download').href = movieUrl;
+        document.getElementById('story-video-download').download = mimeType.startsWith('video/mp4') ? 'our-love-story.mp4' : 'our-love-story.webm';
         document.getElementById('story-video-actions').hidden = false;
         const shareButton = document.getElementById('story-video-share'); shareButton.hidden = !(navigator.share && navigator.canShare);
         movieProgress.value = 100; movieStatus.textContent = `Your ${items.length}-memory love film is ready. Download it or share it from your phone.`;
     } catch (error) {
         if (recorder?.state === 'recording') { try { recorder.stop(); } catch {} }
+        if (movieUrl) { URL.revokeObjectURL(movieUrl); movieUrl = null; }
+        preview.removeAttribute('src');
+        preview.hidden = true;
+        document.getElementById('story-video-actions').hidden = true;
         movieStatus.textContent = error?.message || 'The video could not be created. Please try again.';
     } finally {
         clearInterval(toneTimer); if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
@@ -1116,7 +1149,7 @@ movieButton.addEventListener('click', launchLoveMovie);
 document.getElementById('story-video-share').addEventListener('click', async () => {
     if (!movieUrl) return;
     try {
-        const blob = await (await fetch(movieUrl)).blob(); const file = new File([blob], 'our-love-story.webm', { type: blob.type });
+        const blob = await (await fetch(movieUrl)).blob(); const extension = blob.type.includes('mp4') ? 'mp4' : 'webm'; const file = new File([blob], `our-love-story.${extension}`, { type: blob.type });
         if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: 'Our little love film', text: 'A few memories, together with love.' });
     } catch (error) { if (error.name !== 'AbortError') movieStatus.textContent = 'Sharing was not available. Download the video and share it from your device.'; }
 });
