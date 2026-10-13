@@ -249,6 +249,9 @@ function openGift(){
     setTimeout(
         ()=>{
 
+            card.classList.add("story-open");
+            card.parentElement.classList.add("story-open");
+            document.body.classList.add("story-open");
             reveal.classList.add("show");
 
         },
