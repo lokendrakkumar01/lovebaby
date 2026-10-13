@@ -564,7 +564,7 @@ const memoryUpload = multer({
   storage: multer.diskStorage({ destination: tmpdir(), filename: (_req, _file, callback) => callback(null, `lm-${crypto.randomUUID()}`) }),
   limits: { fileSize: 100 * 1024 * 1024, files: 1, fields: 2, fieldSize: 400 }
 });
-const knownFileTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'video/mp4', 'video/webm', 'video/quicktime']);
+const knownFileTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif', 'video/mp4', 'video/webm', 'video/quicktime']);
 
 function uploadCloudinaryVideo(path, options) {
   return new Promise((resolve, reject) => {
@@ -670,6 +670,12 @@ async function requireContributor(req, res, next) {
 
 app.post('/api/contribute/:token/media', uploadLimiter, requireContributor, memoryUpload.single('file'), async (req, res) => {
   const entry = await saveMedia(req.contributorOwner._id, req);
+  if (req.contributorOwner._id.equals(systemGalleryId)) {
+    const gallery = await users.findOne({ _id: systemGalleryId }, { projection: { 'storyConfig.memoryIds': 1 } });
+    if (Array.isArray(gallery?.storyConfig?.memoryIds)) {
+      await users.updateOne({ _id: systemGalleryId }, { $addToSet: { 'storyConfig.memoryIds': entry._id.toString() } });
+    }
+  }
   res.status(201).json({ item: cleanEntry(entry, req.params.token) });
 });
 
@@ -1003,6 +1009,22 @@ app.delete('/api/admin/items/:id/spotify-track', requireAdmin, async (req, res) 
 app.post('/api/admin/media', requireAdmin, uploadLimiter, memoryUpload.single('file'), async (req, res) => {
   const entry = await saveMedia(systemGalleryId, req);
   res.status(201).json({ item: cleanEntry(entry) });
+});
+
+app.post('/api/admin/contributor-link', requireAdmin, async (req, res) => {
+  let { contributorToken } = await users.findOne({ _id: systemGalleryId }, { projection: { contributorToken: 1 } });
+  if (!contributorToken) {
+    const candidate = crypto.randomBytes(32).toString('base64url');
+    const claim = await users.updateOne({ _id: systemGalleryId, contributorToken: { $exists: false } }, { $set: { contributorToken: candidate } });
+    contributorToken = claim.modifiedCount ? candidate : (await users.findOne({ _id: systemGalleryId }, { projection: { contributorToken: 1 } }))?.contributorToken;
+  }
+  if (!contributorToken) return res.status(503).json({ error: 'The story upload link could not be prepared. Please try again.' });
+  res.json({ url: new URL('/add/' + contributorToken, req.protocol + '://' + req.get('host')).href });
+});
+
+app.delete('/api/admin/contributor-link', requireAdmin, async (_req, res) => {
+  await users.updateOne({ _id: systemGalleryId }, { $unset: { contributorToken: '' } });
+  res.json({ ok: true });
 });
 
 app.post('/api/admin/story-link', requireAdmin, async (req, res) => {
