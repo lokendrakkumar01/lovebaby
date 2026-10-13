@@ -1837,3 +1837,117 @@ video.story-film-media{background:#08070b}
   .story-gallery-head h2{font-size:2.15rem}
 }
 @media(prefers-reduced-motion:reduce){.story-message-toggle{transition:none}}
+
+
+/* Mobile controls: after opening, let the page grow and scroll naturally. */
+html, body { min-height:100%; height:auto; }
+body { overflow-x:hidden; overflow-y:auto; }
+.page { position:fixed; }
+.stage.story-open {
+  display:flex;
+  width:100%;
+  height:auto;
+  min-height:100svh;
+  align-items:flex-start;
+  padding:12px 10px 32px;
+}
+.card.story-open {
+  width:min(680px,100%);
+  height:auto;
+  min-height:calc(100svh - 24px);
+  max-height:none;
+  overflow:visible;
+  justify-content:flex-start;
+}
+.card.story-open .gift-screen { display:none; }
+.card.story-open .reveal {
+  position:relative;
+  inset:auto;
+  width:100%;
+  min-height:calc(100svh - 50px);
+  padding:clamp(18px,4vh,34px) clamp(10px,3vw,24px) max(22px,env(safe-area-inset-bottom));
+  overflow:visible;
+  justify-content:flex-start;
+  opacity:1;
+  visibility:visible;
+  transform:none;
+  transition:none;
+}
+.card.story-open .story-personal-message.is-collapsed {
+  display:block;
+  max-height:3.1em;
+  overflow:hidden;
+  line-height:1.55;
+  white-space:normal;
+  -webkit-line-clamp:unset;
+}
+.card.story-open .story-personal-message.is-expanded {
+  max-height:min(35svh,300px);
+  overflow:auto;
+}
+.card.story-open .big-heart { flex:0 0 auto; }
+.card.story-open .title { margin-top:4px; }
+.card.story-open .emoji-line { margin-top:12px; }
+.card.story-open .main-button,
+.card.story-open .music-toggle,
+.card.story-open .action-row,
+.card.story-open .story-message-toggle,
+.card.story-open .surprise-memory-preview {
+  position:relative;
+  z-index:12;
+}
+.card.story-open .main-button {
+  min-height:52px;
+  padding:14px 26px;
+  line-height:1.2;
+  white-space:normal;
+}
+.card.story-open .music-toggle { min-height:48px; padding:0 22px; }
+.card.story-open .action-row { gap:10px; max-width:100%; padding:4px 2px; }
+.card.story-open .action {
+  width:48px; height:48px;
+  flex:0 0 48px;
+  border-color:#ffffff55;
+  background:rgba(58,25,48,.8);
+  color:#fff;
+  box-shadow:0 4px 16px #0005, inset 0 1px #ffffff26;
+}
+.float-emoji, .burst { z-index:4; }
+.card.story-open .story-message-toggle {
+  margin:0 auto 8px;
+  min-height:38px;
+  padding:8px 15px;
+  background:#351527;
+}
+.card.story-open .action:focus-visible,
+.card.story-open .main-button:focus-visible,
+.card.story-open .music-toggle:focus-visible {
+  outline:3px solid #fff;
+  outline-offset:3px;
+}
+@media(max-width:700px) {
+  .stage.story-open { padding:8px 8px 24px; }
+  .card.story-open {
+    width:100%;
+    min-height:calc(100svh - 16px);
+    border-radius:28px;
+  }
+  .card.story-open .reveal {
+    min-height:calc(100svh - 30px);
+    padding:clamp(14px,3vh,26px) 12px max(20px,env(safe-area-inset-bottom));
+  }
+  .card.story-open .story-personal-message {
+    max-width:100%;
+    font-size:clamp(.9rem,3.8vw,1.05rem);
+    line-height:1.45;
+  }
+  .card.story-open .emoji-line {
+    gap:5px;
+    font-size:clamp(18px,5.6vw,24px);
+  }
+  .card.story-open .main-button { margin-top:14px; }
+  .card.story-open .action-row { margin-top:12px; gap:8px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .float-emoji, .burst { display:none!important; }
+}
