@@ -337,7 +337,7 @@ mainButton.addEventListener(
 
 
         createFlash();
-
+        launchPhotoConfetti(mainButton);
 
         for(
             let i=0;
@@ -533,6 +533,37 @@ function createBurst(
         1000
     );
 
+}
+
+
+/* Burst a small selection of this story's photos from the love button. */
+function launchPhotoConfetti(button) {
+    const photos = storyItems.filter((item) => item.kind === "image" && item.mediaUrl);
+    if (!photos.length) return;
+
+    const rect = button.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + rect.height / 2;
+    const count = Math.min(photos.length, innerWidth < 700 ? 6 : 9);
+    const selected = [...photos].sort(() => Math.random() - 0.5).slice(0, count);
+
+    selected.forEach((item, index) => {
+        const image = document.createElement("img");
+        image.className = "story-photo-burst";
+        image.src = item.mediaUrl;
+        image.alt = "";
+        image.setAttribute("aria-hidden", "true");
+        image.draggable = false;
+        image.style.left = originX + "px";
+        image.style.top = originY + "px";
+        image.style.setProperty("--photo-x", (Math.random() * innerWidth * .82 - innerWidth * .41) + "px");
+        image.style.setProperty("--photo-y", (-80 - Math.random() * Math.min(innerHeight * .58, 430)) + "px");
+        image.style.setProperty("--photo-rotate", (Math.random() * 46 - 23) + "deg");
+        image.style.setProperty("--photo-delay", (index * 65) + "ms");
+        document.body.append(image);
+        image.addEventListener("error", () => image.remove(), { once: true });
+        setTimeout(() => image.remove(), 1900);
+    });
 }
 
 
