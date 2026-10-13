@@ -20,6 +20,24 @@ async function api(path, options = {}) {
   return data;
 }
 
+function uploadWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', path);
+    request.withCredentials = true;
+    request.upload.addEventListener('progress', (event) => { if (event.lengthComputable) onProgress(`Sending · ${Math.round(event.loaded / event.total * 100)}%`); });
+    request.upload.addEventListener('load', () => onProgress('Saving securely to Cloudinary…'));
+    request.addEventListener('load', () => {
+      let data = {}; try { data = JSON.parse(request.responseText); } catch {}
+      if (request.status < 200 || request.status >= 300) { const error = new Error(data.error || `Upload failed (${request.status}).`); error.status = request.status; reject(error); }
+      else resolve(data);
+    });
+    request.addEventListener('error', () => reject(new Error('The upload connection was interrupted. Check your connection and try again.')));
+    request.addEventListener('abort', () => reject(new Error('The upload was cancelled.')));
+    request.send(formData);
+  });
+}
+
 function notice(element, message = '') { element.textContent = message; }
 
 function renderSpotifyResults(target, tracks, onSelect) {
@@ -508,23 +526,34 @@ adminUploadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const files = Array.from($('#admin-files').files || []);
   if (!files.length) return;
+  const tooLarge = files.find((file) => file.size > 100 * 1024 * 1024);
+  if (tooLarge) { $('#admin-upload-status').textContent = `${tooLarge.name} is over the 100 MB per-file limit.`; return; }
   const button = adminUploadForm.querySelector('button[type="submit"]');
   button.disabled = true;
   const caption = String(new FormData(adminUploadForm).get('caption') || '');
   let uploaded = 0;
+  const uploadedIds = [];
   try {
     for (const file of files) {
-      $('#admin-upload-status').textContent = `Uploading ${uploaded + 1} of ${files.length}…`;
+      const type = file.type.startsWith('video/') ? 'video' : 'photo';
+      $('#admin-upload-status').textContent = `Preparing ${type} ${uploaded + 1} of ${files.length}…`;
       const form = new FormData();
       form.append('file', file);
       form.append('caption', caption);
-      await api('/api/admin/media', { method: 'POST', body: form });
+      const result = await uploadWithProgress('/api/admin/media', form, (progress) => {
+        $('#admin-upload-status').textContent = `${type[0].toUpperCase() + type.slice(1)} ${uploaded + 1} of ${files.length} · ${progress}`;
+      });
+      if (result.item?.id) uploadedIds.push(result.item.id);
       uploaded += 1;
     }
+    if (Array.isArray(storyMemoryIds)) storyMemoryIds = [...new Set([...storyMemoryIds, ...uploadedIds])];
     adminUploadForm.reset();
     $('#admin-file-name').textContent = 'Choose photos or videos';
-    $('#admin-upload-status').textContent = `${uploaded} memory${uploaded === 1 ? '' : 'ies'} added to the shared gallery.`;
+    $('#admin-upload-status').textContent = `${uploaded} photo/video ${uploaded === 1 ? 'added' : 'items added'} · refreshing gallery…`;
     await loadMemories();
+    $('#admin-upload-status').textContent = `${uploaded} photo/video ${uploaded === 1 ? 'added' : 'items added'} below. Selected for the story; save the story to update its link.`;
+    document.querySelector('[data-view="memories-view"]')?.click();
+    $('#admin-memory-grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     $('#admin-upload-status').textContent = uploaded ? `${uploaded} uploaded; the next file failed: ${error.message}` : error.message;
     await loadMemories().catch(() => {});
