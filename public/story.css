@@ -1951,3 +1951,43 @@ body { overflow-x:hidden; overflow-y:auto; }
 @media(prefers-reduced-motion:reduce) {
   .float-emoji, .burst { display:none!important; }
 }
+
+
+/* Photo and emoji celebration launched from the main story button. */
+.story-photo-burst {
+  position:fixed;
+  z-index:18;
+  width:clamp(64px,17vw,112px);
+  height:clamp(82px,22vw,142px);
+  object-fit:cover;
+  border:2px solid rgba(255,240,247,.94);
+  border-radius:13px;
+  background:#311629;
+  box-shadow:0 12px 34px rgba(0,0,0,.55),0 0 22px rgba(255,110,165,.46);
+  pointer-events:none;
+  transform:translate(-50%,-50%) scale(.2) rotate(0);
+  animation:storyPhotoBurst 1.65s cubic-bezier(.16,.74,.23,1) var(--photo-delay,0ms) both;
+  will-change:transform,opacity;
+}
+@keyframes storyPhotoBurst {
+  0% { opacity:0; transform:translate(-50%,-50%) scale(.18) rotate(0); }
+  12% { opacity:1; }
+  48% { opacity:1; transform:translate(calc(-50% + var(--photo-x)),calc(-50% + var(--photo-y))) scale(1.08) rotate(var(--photo-rotate)); }
+  100% { opacity:0; transform:translate(calc(-50% + var(--photo-x)),calc(-50% + var(--photo-y) + 90px)) scale(.78) rotate(calc(var(--photo-rotate) * 1.5)); }
+}
+.burst {
+  z-index:24;
+  text-shadow:0 4px 18px rgba(255,50,140,.9),0 2px 5px #0009;
+}
+.float-emoji {
+  z-index:23;
+  text-shadow:0 4px 16px rgba(255,50,140,.8),0 2px 5px #0009;
+}
+@media(max-width:700px) {
+  .story-photo-burst { width:clamp(58px,19vw,88px); height:clamp(74px,24vw,114px); border-radius:11px; }
+  .burst { font-size:clamp(24px,8vw,34px); }
+  .float-emoji { font-size:clamp(23px,7vw,30px); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .story-photo-burst { display:none!important; animation:none!important; }
+}
