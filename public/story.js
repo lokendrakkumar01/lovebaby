@@ -1003,12 +1003,16 @@ function waitForMedia(media, eventName) {
     if (media instanceof HTMLVideoElement && media.error) return Promise.reject(new Error('A video could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.'));
     if (media instanceof HTMLVideoElement && media.readyState >= 2) return Promise.resolve();
     return new Promise((resolve, reject) => {
-        const cleanup = () => { media.removeEventListener(eventName, onReady); media.removeEventListener('error', onError); };
+        const timeout = setTimeout(() => { cleanup(); reject(new Error('This memory took too long to load and was skipped.')); }, 20000);
+        const cleanup = () => { clearTimeout(timeout); media.removeEventListener(eventName, onReady); media.removeEventListener('error', onError); };
         const onReady = () => { cleanup(); resolve(); };
         const onError = () => { cleanup(); reject(new Error('A photo or video could not be loaded for the movie. Check that its Cloudinary link is public and allows browser access.')); };
         media.addEventListener(eventName, onReady, { once: true }); media.addEventListener('error', onError, { once: true });
     });
 }
+
+const MOVIE_PHOTO_DURATION_MS = 1800;
+const MOVIE_VIDEO_DURATION_SECONDS = 4.5;
 
 async function makeLoveMovie() {
     if (movieBusy) return;
@@ -1056,22 +1060,38 @@ async function makeLoveMovie() {
         const stopped = new Promise((resolve, reject) => { recorder.addEventListener('stop', resolve, { once: true }); recorder.addEventListener('error', () => reject(new Error('The browser stopped recording the movie. Try fewer or shorter videos.')), { once: true }); });
         drawMovieFrame(ctx, null, {}, 0, items.length); recorder.start(1000);
         const updateProgress = (index, fraction) => { const value = Math.min(99, Math.round(((index + fraction) / items.length) * 100)); movieProgress.value = value; movieStatus.textContent = `Creating your love film · ${index + 1} of ${items.length} · ${value}%`; };
+        let skippedCount = 0;
         for (let index = 0; index < items.length; index++) {
             const item = items[index];
-            if (item.kind === 'image') {
-                image = new Image(); image.crossOrigin = 'anonymous'; image.src = item.mediaUrl;
-                if (!image.complete) await waitForMedia(image, 'load');
-                if (!image.naturalWidth) throw new Error('A photo could not be decoded for the movie.');
-                const start = performance.now();
-                while (performance.now() - start < 4200) { drawMovieFrame(ctx, image, item, index, items.length); updateProgress(index, Math.min(1, (performance.now() - start) / 4200)); await movieFrame(); }
-            } else {
-                video = document.createElement('video'); video.crossOrigin = 'anonymous'; video.src = item.mediaUrl;
-                video.muted = true; video.playsInline = true; video.preload = 'auto';
-                if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
-                await video.play();
-                while (!video.ended && !video.error) { drawMovieFrame(ctx, video, item, index, items.length, true); updateProgress(index, Number.isFinite(video.duration) && video.duration ? video.currentTime / video.duration : 0); await movieFrame(); }
-                if (video.error) throw new Error('A video could not be read. Check the Cloudinary video URL and try again.');
-                video.pause(); video.removeAttribute('src'); video.load(); video = null;
+            try {
+                if (item.kind === 'image') {
+                    image = new Image(); image.decoding = 'async'; image.src = item.mediaUrl;
+                    if (!image.complete) await waitForMedia(image, 'load');
+                    if (!image.naturalWidth) throw new Error('This photo could not be decoded and was skipped.');
+                    const start = performance.now();
+                    while (performance.now() - start < MOVIE_PHOTO_DURATION_MS) { drawMovieFrame(ctx, image, item, index, items.length); updateProgress(index, Math.min(1, (performance.now() - start) / MOVIE_PHOTO_DURATION_MS)); await movieFrame(); }
+                    image = null;
+                } else {
+                    video = document.createElement('video'); video.src = item.mediaUrl;
+                    video.muted = true; video.playsInline = true; video.preload = 'auto';
+                    if (video.readyState < 2) await waitForMedia(video, 'loadeddata');
+                    await video.play();
+                    const start = performance.now();
+                    while (!video.ended && !video.error && video.currentTime < MOVIE_VIDEO_DURATION_SECONDS && performance.now() - start < 8000) {
+                        drawMovieFrame(ctx, video, item, index, items.length, true);
+                        const fraction = Math.min(1, video.currentTime / MOVIE_VIDEO_DURATION_SECONDS);
+                        updateProgress(index, fraction);
+                        await movieFrame();
+                    }
+                    if (video.error) throw new Error('This video could not be read and was skipped.');
+                    video.pause(); video.removeAttribute('src'); video.load(); video = null;
+                }
+            } catch (error) {
+                skippedCount++;
+                console.warn('Skipping a memory that could not be added to the love film:', error?.message || 'media error');
+                if (image) { image.onload = null; image.onerror = null; image.src = ''; image = null; }
+                if (video) { video.pause(); video.removeAttribute('src'); video.load(); video = null; }
+                updateProgress(index, 1);
             }
         }
         clearInterval(toneTimer); toneTimer = null; recorder.stop(); await stopped;
@@ -1087,7 +1107,11 @@ async function makeLoveMovie() {
         document.getElementById('story-video-download').download = mimeType.startsWith('video/mp4') ? 'our-love-story.mp4' : 'our-love-story.webm';
         document.getElementById('story-video-actions').hidden = false;
         const shareButton = document.getElementById('story-video-share'); shareButton.hidden = !(navigator.share && navigator.canShare);
-        movieProgress.value = 100; movieStatus.textContent = `Your ${items.length}-memory love film is ready. Download it or share it from your phone.`;
+        movieProgress.value = 100;
+        const includedCount = items.length - skippedCount;
+        movieStatus.textContent = skippedCount
+            ? `Your love film is ready with ${includedCount} memories. ${skippedCount} could not be loaded and were skipped.`
+            : `Your love film is ready with all ${includedCount} memories. Download it or share it from your phone.`;
     } catch (error) {
         if (recorder?.state === 'recording') { try { recorder.stop(); } catch {} }
         if (movieUrl) { URL.revokeObjectURL(movieUrl); movieUrl = null; }
