@@ -1047,11 +1047,11 @@ async function makeLoveMovie() {
         const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()]);
         const videoProbe = document.createElement('video');
         const formats = [
-            'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
-            'video/mp4',
             ...(mobileEncode
                 ? ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
-                : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'])
+                : ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']),
+            'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+            'video/mp4'
         ];
         const mimeType = formats.find((type) => Recorder.isTypeSupported(type) && videoProbe.canPlayType(type));
         if (!mimeType) throw new Error('This browser cannot both create and play a supported video format. Please use the latest Chrome, Edge, or Safari.');
@@ -1095,23 +1095,32 @@ async function makeLoveMovie() {
             }
         }
         clearInterval(toneTimer); toneTimer = null; recorder.stop(); await stopped;
-        const blob = new Blob(chunks, { type: mimeType });
+        const outputMimeType = recorder.mimeType || chunks.find((chunk) => chunk.type)?.type || mimeType;
+        const blob = new Blob(chunks, { type: outputMimeType });
         if (!blob.size) throw new Error('The video was empty. Please try again.');
         if (movieUrl) URL.revokeObjectURL(movieUrl);
         movieUrl = URL.createObjectURL(blob);
         preview.src = movieUrl;
         preview.hidden = false;
         preview.load();
-        await waitForMoviePreview(preview);
+        let previewAvailable = true;
+        try { await waitForMoviePreview(preview); }
+        catch {
+            previewAvailable = false;
+            preview.pause(); preview.removeAttribute('src'); preview.load(); preview.hidden = true;
+        }
         document.getElementById('story-video-download').href = movieUrl;
-        document.getElementById('story-video-download').download = mimeType.startsWith('video/mp4') ? 'our-love-story.mp4' : 'our-love-story.webm';
+        const isMp4 = outputMimeType.toLowerCase().startsWith('video/mp4');
+        document.getElementById('story-video-download').download = isMp4 ? 'our-love-story.mp4' : 'our-love-story.webm';
         document.getElementById('story-video-actions').hidden = false;
         const shareButton = document.getElementById('story-video-share'); shareButton.hidden = !(navigator.share && navigator.canShare);
         movieProgress.value = 100;
         const includedCount = items.length - skippedCount;
-        movieStatus.textContent = skippedCount
-            ? `Your love film is ready with ${includedCount} memories. ${skippedCount} could not be loaded and were skipped.`
-            : `Your love film is ready with all ${includedCount} memories. Download it or share it from your phone.`;
+        movieStatus.textContent = !previewAvailable
+            ? `Your video file is ready to download, but this browser cannot preview it. Try opening the downloaded ${isMp4 ? 'MP4' : 'WebM'} file in your device's video player.`
+            : skippedCount
+                ? `Your love film is ready with ${includedCount} memories. ${skippedCount} could not be loaded and were skipped.`
+                : `Your love film is ready with all ${includedCount} memories. Download it or share it from your phone.`;
     } catch (error) {
         if (recorder?.state === 'recording') { try { recorder.stop(); } catch {} }
         if (movieUrl) { URL.revokeObjectURL(movieUrl); movieUrl = null; }
