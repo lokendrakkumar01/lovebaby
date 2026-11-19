@@ -4,16 +4,16 @@ A responsive photo, video, and message space. Express serves the app and API; Mo
 
 ## Deploy on Render
 
-1. **Rotate the credentials you pasted into chat before deploying.** Create a new Cloudinary API secret and change the MongoDB Atlas database user's password. Update the MongoDB connection string with the new password. Do not add credentials to source files or Git.
-2. Push this repository to GitHub. In Render choose **New → Blueprint**, connect the repository, and apply `render.yaml`. This creates a Node web service rather than a static site.
-3. In the Render service's **Environment** page, set `MONGODB_URI`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `SPOTIFY_CLIENT_ID`. `CLOUDINARY_CLOUD_NAME` and the Spotify redirect URI are set in the blueprint. Render creates `SESSION_SECRET` for the service. Set a unique admin password with at least 20 characters; keep credentials in Render and do not commit them.
+1. **Rotate any credentials that have been exposed.** Create a new Cloudinary API secret and change the MongoDB Atlas database user's password. Update the MongoDB connection string with the new password. Do not add credentials to source files or Git.
+2. This repository is a single Express web service: it serves the frontend from `public/` and the API from the same origin. If the backend service already exists on Render, connect this repository to that service (or update its connected repository) and deploy it; do not create a separate Static Site. The root-level `index.html` is not served by the Express app.
+3. In the Render service's **Environment** page, verify the variables listed in `.env.example` are configured. At minimum, the server requires `MONGODB_URI`, `SESSION_SECRET`, and the three Cloudinary variables. Admin login uses `ADMIN_EMAIL` and `ADMIN_PASSWORD`; Spotify features use the Spotify variables. Keep credentials in Render and do not commit them.
 4. In the Spotify Developer Dashboard, add `https://lovebaby.onrender.com/auth/spotify/callback` to the app's Redirect URIs exactly as written. Set `SPOTIFY_CLIENT_ID` and a newly rotated `SPOTIFY_CLIENT_SECRET` in Render's Environment page. The secret is used only by the server-side catalog search and never sent to browser code. The account connection still uses Authorization Code with PKCE.
 5. In MongoDB Atlas, allowlist the outbound IP ranges shown for your Render service. Use a dedicated database user with access only to this app's database.
 6. Deploy and open the Render URL. Sign in and choose **Connect Spotify** to authorize your account.
 
 ### Manual Render setup
 
-If you prefer not to use a Blueprint, create a **Web Service** connected to the repo. Set **Build Command** to `npm ci`, **Start Command** to `npm start`, and **Health Check Path** to `/healthz`. Add the environment variables listed in `.env.example` in Render's Environment settings. Do not make this a Static Site: the Express API is required for login, uploads, sharing and Spotify OAuth.
+For a new deployment, create a **Web Service** connected to the repo. Set **Build Command** to `npm install --omit=dev`, **Start Command** to `npm start`, and **Health Check Path** to `/healthz`. Add the environment variables listed in `.env.example` in Render's Environment settings. This repository does not include a `package-lock.json`, so `npm ci` will fail. Do not make this a Static Site: the Express API is required for login, uploads, sharing and Spotify OAuth.
 
 ## How privacy works
 
